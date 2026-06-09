@@ -214,21 +214,69 @@ class AudioCapture:
         pa = pyaudio.PyAudio()
         device_index = self._resolve_device_index(pa)
 
+        # Determine the supported sample rate
+        supported_rates = [self._sample_rate, 44100, 48000, 32000, 8000]
+        device_rate = self._sample_rate
+
+        try:
+            if device_index is None or device_index < 0:
+                dev_info = pa.get_default_input_device_info()
+            else:
+                dev_info = pa.get_device_info_by_index(device_index)
+            
+            default_rate = int(dev_info.get("defaultSampleRate", 0))
+            if default_rate > 0 and default_rate not in supported_rates:
+                supported_rates.insert(1, default_rate)
+        except Exception as e:
+            logger.warning(f"[Capture] Failed to query device default rate: {e}")
+
+        # Find first rate that is supported
+        for rate in supported_rates:
+            try:
+                if pa.is_format_supported(
+                    rate=rate,
+                    input_device=device_index,
+                    input_channels=self._channels,
+                    input_format=pyaudio.paInt16
+                ):
+                    device_rate = rate
+                    break
+            except Exception:
+                continue
+        else:
+            logger.warning(f"[Capture] Could not confirm rate support, attempting default rate from device")
+            try:
+                if device_index is None or device_index < 0:
+                    dev_info = pa.get_default_input_device_info()
+                else:
+                    dev_info = pa.get_device_info_by_index(device_index)
+                device_rate = int(dev_info.get("defaultSampleRate", 16000))
+            except Exception:
+                device_rate = self._sample_rate
+
+        # Configure chunk sizes
+        device_chunk_size = self._chunk_size
+        needs_resampling = False
+        if device_rate != self._sample_rate:
+            device_chunk_size = int(round(self._chunk_size * (device_rate / self._sample_rate)))
+            needs_resampling = True
+            logger.info(f"[Capture] Resampling enabled: mic rate {device_rate} Hz -> target {self._sample_rate} Hz (chunk: {device_chunk_size} -> {self._chunk_size})")
+
         try:
             stream = pa.open(
                 format=pyaudio.paInt16,
                 channels=self._channels,
-                rate=self._sample_rate,
+                rate=device_rate,
                 input=True,
                 input_device_index=device_index,
-                frames_per_buffer=self._chunk_size,
+                frames_per_buffer=device_chunk_size,
             )
         except Exception as e:
-            logger.error(f"[Capture] Cannot open audio stream: {e}")
+            logger.error(f"[Capture] Cannot open audio stream at {device_rate} Hz: {e}")
             pa.terminate()
             return
 
-        logger.info(f"[Capture] Microphone open: {self._actual_device_name}")
+        logger.info(f"[Capture] Microphone open: {self._actual_device_name} (rate: {device_rate} Hz)")
 
         fps = self._sample_rate // self._chunk_size
         speech_frames: List[bytes] = []
@@ -247,8 +295,20 @@ class AudioCapture:
                     calibrating = self._calibrating
                     calibration_limit = self._calibration_limit
 
-                data = stream.read(self._chunk_size, exception_on_overflow=False)
+                data = stream.read(device_chunk_size, exception_on_overflow=False)
                 ts = time.monotonic()
+
+                # Resample to 16000 Hz if needed
+                if needs_resampling and data:
+                    try:
+                        shorts = np.frombuffer(data, dtype=np.int16)
+                        if len(shorts) > 1:
+                            x_old = np.linspace(0, len(shorts) - 1, num=len(shorts))
+                            x_new = np.linspace(0, len(shorts) - 1, num=self._chunk_size)
+                            resampled_shorts = np.interp(x_new, x_old, shorts).astype(np.int16)
+                            data = resampled_shorts.tobytes()
+                    except Exception as re:
+                        logger.error(f"[Capture] Resampling error: {re}")
 
                 # Feed ring buffer
                 self._ring_push(data, ts)

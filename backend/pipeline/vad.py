@@ -52,7 +52,7 @@ class SileroVAD:
     Compatible with ARM64 via onnxruntime package.
     """
 
-    MODEL_URL = "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx"
+    MODEL_URL = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
     SAMPLE_RATE = 16000
     WINDOW_SIZE_SAMPLES = 512  # must match CHUNK size
 
