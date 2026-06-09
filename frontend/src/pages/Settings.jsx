@@ -35,6 +35,16 @@ export function Settings() {
 
   useEffect(() => { load() }, [])
 
+  const refreshDevices = useCallback(async () => {
+    try {
+      const devs = await getAudioDevices()
+      setDevices(devs.devices || [])
+      addToast({ type: 'info', title: 'Device list updated', body: `Found ${devs.devices?.length || 0} active audio input devices.` })
+    } catch (e) {
+      addToast({ type: 'warning', title: 'Failed to refresh devices', body: e.message })
+    }
+  }, [addToast])
+
   const save = async (updates) => {
     setSaving(true)
     try {
@@ -89,7 +99,17 @@ export function Settings() {
         {/* Tab content */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeTab === 'General' && <GeneralTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'Audio & VAD' && <AudioTab config={config} devices={devices} onSave={save} saving={saving} showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced} />}
+          {activeTab === 'Audio & VAD' && (
+            <AudioTab
+              config={config}
+              devices={devices}
+              refreshDevices={refreshDevices}
+              onSave={save}
+              saving={saving}
+              showAdvanced={showAdvanced}
+              setShowAdvanced={setShowAdvanced}
+            />
+          )}
           {activeTab === 'STT' && <STTTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'LLM' && <LLMTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'Recording' && <RecordingTab config={config} onSave={save} saving={saving} />}
@@ -161,7 +181,7 @@ function GeneralTab({ config, onSave, saving }) {
   )
 }
 
-function AudioTab({ config, devices, onSave, saving, showAdvanced, setShowAdvanced }) {
+function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvanced, setShowAdvanced }) {
   const [deviceIndex, setDeviceIndex] = useState(config.audio_device_index ?? -1)
   const [threshold, setThreshold] = useState(config.vad_threshold ?? 300)
   const [silenceDuration, setSilenceDuration] = useState(config.vad_silence_duration ?? 1.5)
@@ -169,17 +189,43 @@ function AudioTab({ config, devices, onSave, saving, showAdvanced, setShowAdvanc
   const [maxSegment, setMaxSegment] = useState(config.vad_max_segment_duration ?? 15)
   const [useSilero, setUseSilero] = useState(config.vad_use_silero ?? false)
   const [autoCalibrate, setAutoCalibrate] = useState(config.vad_auto_calibrate ?? true)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async (e) => {
+    e.preventDefault()
+    setRefreshing(true)
+    await refreshDevices()
+    setRefreshing(false)
+  }
 
   return (
     <>
       <div className="card" style={{ marginBottom: 16 }}>
         <SettingRow label="Microphone Device" hint="Select the audio input device. -1 = auto-detect">
-          <select className="form-select" value={deviceIndex} onChange={e => setDeviceIndex(Number(e.target.value))}>
-            <option value={-1}>Auto-detect</option>
-            {devices.map(d => (
-              <option key={d.index} value={d.index}>{d.index}: {d.name}</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <select className="form-select" value={deviceIndex} onChange={e => setDeviceIndex(Number(e.target.value))} style={{ flex: 1 }}>
+              <option value={-1}>Auto-detect</option>
+              {devices.map(d => (
+                <option key={d.index} value={d.index}>{d.index}: {d.name}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-ghost"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh device list"
+              style={{
+                padding: '0 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 16,
+                flexShrink: 0
+              }}
+            >
+              {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '↻'}
+            </button>
+          </div>
         </SettingRow>
 
         <SettingRow label="VAD Mode" hint="Silero VAD uses a neural network to detect actual speech. Energy VAD uses volume (RMS) threshold.">
