@@ -25,3 +25,9 @@ export const getRecordingDownloadUrl = (alertId) => {
   const base = import.meta.env.VITE_API_URL || ''
   return `${base}/api/recordings/${alertId}/download`
 }
+
+export const getContinuousStreamUrl = (recId) => {
+  const token = localStorage.getItem('voiceguard_token')
+  const base = import.meta.env.VITE_API_URL || ''
+  return `${base}/api/recordings/continuous/${recId}/stream?token=${token}`
+}

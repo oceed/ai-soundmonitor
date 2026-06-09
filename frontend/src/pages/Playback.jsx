@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, subDays, addDays } from 'date-fns'
-import { getTimeline, getRecordingStreamUrl, getRecordingDownloadUrl } from '../api/alerts'
+import { getTimeline, getRecordingStreamUrl, getRecordingDownloadUrl, getContinuousStreamUrl } from '../api/alerts'
 import { Timeline } from '../components/Timeline'
 import { useToast } from '../components/NotificationToast'
 
@@ -9,12 +9,16 @@ export function Playback() {
   const [timelineData, setTimelineData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedAlert, setSelectedAlert] = useState(null)
+  const [activeContinuousRec, setActiveContinuousRec] = useState(null)
+  const [currentPlayRatio, setCurrentPlayRatio] = useState(null)
   const audioRef = useRef(null)
   const { addToast } = useToast()
 
   const loadTimeline = useCallback(async (d) => {
     setLoading(true)
     setSelectedAlert(null)
+    setActiveContinuousRec(null)
+    setCurrentPlayRatio(null)
     try {
       const data = await getTimeline(d)
       setTimelineData(data)
@@ -23,23 +27,105 @@ export function Playback() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [addToast])
 
   useEffect(() => {
     loadTimeline(date)
-  }, [date])
+  }, [date, loadTimeline])
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return
+    const currentTime = audioRef.current.currentTime
+    
+    if (activeContinuousRec) {
+      const startTs = new Date(activeContinuousRec.start_time)
+      const currentTs = new Date(startTs.getTime() + currentTime * 1000)
+      const secondsInDay = currentTs.getHours() * 3600 + currentTs.getMinutes() * 60 + currentTs.getSeconds() + currentTs.getMilliseconds() / 1000
+      setCurrentPlayRatio(secondsInDay / 86400)
+    } else if (selectedAlert) {
+      const alertTs = new Date(selectedAlert.timestamp)
+      const preBuffer = selectedAlert.duration_s ? (selectedAlert.duration_s * 0.4) : 10
+      const currentTs = new Date(alertTs.getTime() - (preBuffer - currentTime) * 1000)
+      const secondsInDay = currentTs.getHours() * 3600 + currentTs.getMinutes() * 60 + currentTs.getSeconds()
+      setCurrentPlayRatio(secondsInDay / 86400)
+    }
+  }
 
   const handleAlertClick = (alert) => {
     setSelectedAlert(alert)
+    
+    // Find if there is a continuous recording that covers this alert's timestamp
+    const alertTime = new Date(alert.timestamp)
+    const matchingCont = timelineData?.continuous_recordings?.find(c => {
+      const start = new Date(c.start_time)
+      const end = new Date(c.end_time)
+      return start <= alertTime && alertTime <= end
+    })
+
     setTimeout(() => {
-      audioRef.current?.load()
-      audioRef.current?.play().catch(() => {})
+      if (!audioRef.current) return
+      
+      if (matchingCont) {
+        setActiveContinuousRec(matchingCont)
+        const offset = (alertTime.getTime() - new Date(matchingCont.start_time).getTime()) / 1000
+        const seekTime = Math.max(0, offset - 10) // Seek to 10s before alert for context
+        
+        audioRef.current.src = getContinuousStreamUrl(matchingCont.id)
+        audioRef.current.load()
+        audioRef.current.currentTime = seekTime
+        audioRef.current.play().catch(() => {})
+      } else {
+        setActiveContinuousRec(null)
+        audioRef.current.src = getRecordingStreamUrl(alert.alert_id)
+        audioRef.current.load()
+        audioRef.current.play().catch(() => {})
+      }
     }, 100)
   }
 
-  const prevDay = () => setDate(format(subDays(new Date(date), 1), 'yyyy-MM-dd'))
+  const handleTrackClick = (ratio) => {
+    if (!timelineData) return
+    
+    const [year, month, day] = date.split('-').map(Number)
+    const targetTimeMs = new Date(year, month - 1, day).getTime() + ratio * 86400 * 1000
+    const targetDate = new Date(targetTimeMs)
+
+    const matchingCont = timelineData.continuous_recordings?.find(c => {
+      const start = new Date(c.start_time)
+      const end = new Date(c.end_time)
+      return start <= targetDate && targetDate <= end
+    })
+
+    if (matchingCont) {
+      setActiveContinuousRec(matchingCont)
+      const offset = (targetDate.getTime() - new Date(matchingCont.start_time).getTime()) / 1000
+      
+      setSelectedAlert(null)
+      setTimeout(() => {
+        if (!audioRef.current) return
+        audioRef.current.src = getContinuousStreamUrl(matchingCont.id)
+        audioRef.current.load()
+        audioRef.current.currentTime = offset
+        audioRef.current.play().catch(() => {})
+      }, 100)
+      
+      addToast({
+        type: 'info',
+        title: 'Continuous playback',
+        body: `Playing chunk starting at ${format(new Date(matchingCont.start_time), 'HH:mm:ss')}`
+      })
+    } else {
+      addToast({
+        type: 'warning',
+        title: 'No continuous recording',
+        body: 'No continuous audio recorded at this specific hour.'
+      })
+    }
+  }
+
+  const prevDay = () => setDate(format(subDays(new Date(date + 'T12:00:00'), 1), 'yyyy-MM-dd'))
   const nextDay = () => {
-    const next = addDays(new Date(date), 1)
+    const next = addDays(new Date(date + 'T12:00:00'), 1)
     if (next <= new Date()) setDate(format(next, 'yyyy-MM-dd'))
   }
 
@@ -54,7 +140,7 @@ export function Playback() {
       <div className="page-header" style={{ flexShrink: 0, padding: '20px 24px 0' }}>
         <div>
           <div className="page-title">Playback</div>
-          <div className="page-subtitle">NVR-style timeline with alert markers</div>
+          <div className="page-subtitle">NVR-style timeline with continuous recording support</div>
         </div>
         {/* Date picker */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -82,7 +168,7 @@ export function Playback() {
               {format(new Date(date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
             </span>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {timelineData?.total || 0} events
+              {timelineData?.alerts?.length || 0} events
             </span>
           </div>
           {loading ? (
@@ -92,8 +178,11 @@ export function Playback() {
           ) : (
             <Timeline
               alerts={timelineData?.alerts || []}
+              continuousRecordings={timelineData?.continuous_recordings || []}
               onAlertClick={handleAlertClick}
               selectedAlertId={selectedAlert?.alert_id}
+              currentPlayRatio={currentPlayRatio}
+              onTrackClick={handleTrackClick}
             />
           )}
         </div>
@@ -110,7 +199,7 @@ export function Playback() {
                 <div className="empty-state" style={{ padding: 30 }}>
                   <div className="empty-state-icon">📅</div>
                   <div className="empty-state-title">No events</div>
-                  <div className="empty-state-sub">No fraud alerts on this date</div>
+                  <div className="empty-state-sub">No compliance alerts on this date</div>
                 </div>
               ) : (
                 timelineData?.alerts?.map(alert => (
@@ -148,61 +237,67 @@ export function Playback() {
 
           {/* Player */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            {selectedAlert ? (
+            {selectedAlert || activeContinuousRec ? (
               <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{
-                      fontSize: 13, fontWeight: 700,
-                      color: VERDICT_COLOR[selectedAlert.verdict] || 'var(--text-secondary)',
-                      marginBottom: 4,
-                    }}>
-                      {selectedAlert.verdict === 'FRAUD' ? '🚨' : '⚠️'} {selectedAlert.verdict} — {selectedAlert.confidence}% confidence
+                  {selectedAlert ? (
+                    <div>
+                      <div style={{
+                        fontSize: 13, fontWeight: 700,
+                        color: VERDICT_COLOR[selectedAlert.verdict] || 'var(--text-secondary)',
+                        marginBottom: 4,
+                      }}>
+                        {selectedAlert.verdict === 'FRAUD' ? '🚨' : '⚠️'} {selectedAlert.verdict} — {selectedAlert.confidence}% confidence
+                        {activeContinuousRec && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: 'var(--accent)' }}>(Continuous Mode)</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {format(new Date(selectedAlert.timestamp), 'EEEE, MMM d yyyy — HH:mm:ss')}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {format(new Date(selectedAlert.timestamp), 'EEEE, MMM d yyyy — HH:mm:ss')}
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>
+                        🔊 Playing Continuous Audio Chunk
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {format(new Date(activeContinuousRec.start_time), 'HH:mm:ss')} - {format(new Date(activeContinuousRec.end_time), 'HH:mm:ss')}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {selectedAlert.has_recording && (
+                    {selectedAlert?.has_recording && !activeContinuousRec && (
                       <a
                         href={getRecordingDownloadUrl(selectedAlert.alert_id)}
                         download
                         className="btn btn-ghost btn-sm"
                       >
-                        ↓ Download
+                        ↓ Download Clip
                       </a>
                     )}
                   </div>
                 </div>
 
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  {selectedAlert.reason}
+                  {selectedAlert ? selectedAlert.reason : 'Listening to the continuous timeline. Click on any event or markers to jump to specific points.'}
                 </div>
 
-                {selectedAlert.has_recording ? (
-                  <div className="audio-player" style={{ marginTop: 'auto' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-                      Recording · {selectedAlert.duration_s?.toFixed(1) || '?'}s
-                    </div>
-                    <audio
-                      ref={audioRef}
-                      src={getRecordingStreamUrl(selectedAlert.alert_id)}
-                      controls
-                      style={{ width: '100%', accentColor: 'var(--accent)' }}
-                    />
+                <div className="audio-player" style={{ marginTop: 'auto' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+                    {activeContinuousRec ? 'Continuous Recording' : 'Event Clip'} · {activeContinuousRec ? activeContinuousRec.duration_s?.toFixed(1) : selectedAlert?.duration_s?.toFixed(1)}s
                   </div>
-                ) : (
-                  <div style={{ marginTop: 'auto', padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, border: '1px dashed var(--border)', borderRadius: 8 }}>
-                    No recording available for this event
-                  </div>
-                )}
+                  <audio
+                    ref={audioRef}
+                    onTimeUpdate={handleTimeUpdate}
+                    controls
+                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                  />
+                </div>
               </div>
             ) : (
               <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                 <div style={{ fontSize: 3 + 'rem', opacity: 0.2 }}>▶</div>
-                <div style={{ color: 'var(--text-secondary)', fontSize: 14, fontWeight: 500 }}>Select an event to play</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Click a marker on the timeline or an event in the list</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 14, fontWeight: 500 }}>Select an event or time to play</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Click on the continuous orange areas in the timeline or select a specific event from the list.</div>
               </div>
             )}
           </div>

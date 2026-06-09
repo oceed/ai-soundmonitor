@@ -61,6 +61,7 @@ class RecordingSession(Base):
     error_count: Mapped[int] = mapped_column(Integer, default=0)
 
     segments: Mapped[List["Segment"]] = relationship("Segment", back_populates="session")
+    continuous_recordings: Mapped[List["ContinuousRecording"]] = relationship("ContinuousRecording", back_populates="session", cascade="all, delete-orphan")
 
 
 # ─────────────────────────────────────────────────────────
@@ -130,3 +131,22 @@ class Alert(Base):
     mqtt_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     segment: Mapped["Segment"] = relationship("Segment", back_populates="alert")
+
+
+# ─────────────────────────────────────────────────────────
+# Continuous Recordings
+# ─────────────────────────────────────────────────────────
+
+class ContinuousRecording(Base):
+    __tablename__ = "continuous_recordings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, ForeignKey("recording_sessions.id"), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    filepath: Mapped[str] = mapped_column(String(512), nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), nullable=False)
+    duration_s: Mapped[float] = mapped_column(Float, nullable=False)
+
+    session: Mapped["RecordingSession"] = relationship("RecordingSession", back_populates="continuous_recordings")
+

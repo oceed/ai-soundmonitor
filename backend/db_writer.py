@@ -17,7 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from config import get_settings
-from models import Alert, ConfigEntry, RecordingSession, Segment
+from models import Alert, ConfigEntry, RecordingSession, Segment, ContinuousRecording
 
 logger = logging.getLogger(__name__)
 
@@ -178,14 +178,39 @@ class DBWriter:
                 return {"transcript": alert.transcript}
         return None
 
+    def save_continuous_recording(
+        self,
+        session_id: int,
+        start_time: datetime,
+        end_time: datetime,
+        filepath: str,
+        filename: str,
+        duration_s: float,
+    ) -> int:
+        with self._session() as s:
+            rec = ContinuousRecording(
+                session_id=session_id,
+                start_time=start_time,
+                end_time=end_time,
+                filepath=filepath,
+                filename=filename,
+                duration_s=duration_s,
+            )
+            s.add(rec)
+            s.commit()
+            return rec.id
+
     def delete_old_records(self, cutoff: datetime) -> dict:
         with self._session() as s:
             from sqlalchemy import delete
+            # Delete old continuous recordings
+            r_c = s.execute(delete(ContinuousRecording).where(ContinuousRecording.start_time < cutoff))
             # Delete old alerts first (foreign key)
             r_a = s.execute(delete(Alert).where(Alert.timestamp < cutoff))
             r_s = s.execute(delete(Segment).where(Segment.timestamp < cutoff))
             s.commit()
             return {
+                "continuous_deleted": r_c.rowcount,
                 "alerts_deleted": r_a.rowcount,
                 "segments_deleted": r_s.rowcount,
             }

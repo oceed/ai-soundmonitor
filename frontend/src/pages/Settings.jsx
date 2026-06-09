@@ -167,6 +167,8 @@ function AudioTab({ config, devices, onSave, saving, showAdvanced, setShowAdvanc
   const [silenceDuration, setSilenceDuration] = useState(config.vad_silence_duration ?? 1.5)
   const [minSpeech, setMinSpeech] = useState(config.vad_min_speech_duration ?? 0.5)
   const [maxSegment, setMaxSegment] = useState(config.vad_max_segment_duration ?? 15)
+  const [useSilero, setUseSilero] = useState(config.vad_use_silero ?? false)
+  const [autoCalibrate, setAutoCalibrate] = useState(config.vad_auto_calibrate ?? true)
 
   return (
     <>
@@ -180,12 +182,31 @@ function AudioTab({ config, devices, onSave, saving, showAdvanced, setShowAdvanc
           </select>
         </SettingRow>
 
-        <SettingRow label="VAD Threshold (RMS)" hint="Energy level to detect speech. Increase in noisy environments">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input type="range" min={50} max={1000} step={10} value={threshold} onChange={e => setThreshold(Number(e.target.value))} style={{ flex: 1 }} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 40 }}>{threshold}</span>
-          </div>
+        <SettingRow label="VAD Mode" hint="Silero VAD uses a neural network to detect actual speech. Energy VAD uses volume (RMS) threshold.">
+          <select className="form-select" value={useSilero ? 'silero' : 'energy'} onChange={e => {
+            const val = e.target.value === 'silero'
+            setUseSilero(val)
+            if (val) setAutoCalibrate(false)
+          }}>
+            <option value="energy">Energy VAD (RMS threshold)</option>
+            <option value="silero">Silero VAD (ONNX Neural Net)</option>
+          </select>
         </SettingRow>
+
+        {!useSilero && (
+          <SettingRow label="Auto-Calibrate Threshold" hint="Measure background noise on startup to set threshold automatically.">
+            <Toggle checked={autoCalibrate} onChange={setAutoCalibrate} />
+          </SettingRow>
+        )}
+
+        {!useSilero && !autoCalibrate && (
+          <SettingRow label="VAD Threshold (RMS)" hint="Energy level to detect speech. Increase in noisy environments">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="range" min={50} max={1000} step={10} value={threshold} onChange={e => setThreshold(Number(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 40 }}>{threshold}</span>
+            </div>
+          </SettingRow>
+        )}
 
         {/* Advanced toggle */}
         <div
@@ -227,6 +248,8 @@ function AudioTab({ config, devices, onSave, saving, showAdvanced, setShowAdvanc
             vad_silence_duration: silenceDuration,
             vad_min_speech_duration: minSpeech,
             vad_max_segment_duration: maxSegment,
+            vad_use_silero: useSilero,
+            vad_auto_calibrate: autoCalibrate,
           })} />
         </div>
       </div>
@@ -299,9 +322,24 @@ function RecordingTab({ config, onSave, saving }) {
   const [preBuffer, setPreBuffer] = useState(config.pre_buffer_seconds ?? 10)
   const [postBuffer, setPostBuffer] = useState(config.post_buffer_seconds ?? 15)
   const [recordOn, setRecordOn] = useState(config.record_on_verdict ?? 'BOTH')
+  const [continuousEnabled, setContinuousEnabled] = useState(config.continuous_recording_enabled ?? false)
+  const [continuousMinutes, setContinuousMinutes] = useState(config.continuous_chunk_minutes ?? 10)
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
+      <SettingRow label="Continuous 24/7 Recording" hint="Record all audio continuously in fixed-size chunks, independent of alerts.">
+        <Toggle checked={continuousEnabled} onChange={setContinuousEnabled} />
+      </SettingRow>
+
+      {continuousEnabled && (
+        <SettingRow label="Continuous Chunk Duration" hint="Length of each continuous audio recording chunk file.">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="number" className="form-input" value={continuousMinutes} onChange={e => setContinuousMinutes(Number(e.target.value))} min={1} max={60} style={{ width: 80 }} />
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>minutes</span>
+          </div>
+        </SettingRow>
+      )}
+
       <SettingRow label="Pre-Event Buffer" hint="Seconds of audio to keep BEFORE the fraud was detected">
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input type="number" className="form-input" value={preBuffer} onChange={e => setPreBuffer(Number(e.target.value))} min={1} max={60} style={{ width: 80 }} />
@@ -322,7 +360,13 @@ function RecordingTab({ config, onSave, saving }) {
         </select>
       </SettingRow>
       <div style={{ paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-        <SaveBtn saving={saving} onClick={() => onSave({ pre_buffer_seconds: preBuffer, post_buffer_seconds: postBuffer, record_on_verdict: recordOn })} />
+        <SaveBtn saving={saving} onClick={() => onSave({
+          pre_buffer_seconds: preBuffer,
+          post_buffer_seconds: postBuffer,
+          record_on_verdict: recordOn,
+          continuous_recording_enabled: continuousEnabled,
+          continuous_chunk_minutes: continuousMinutes,
+        })} />
       </div>
     </div>
   )

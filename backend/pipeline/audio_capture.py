@@ -46,6 +46,8 @@ class AudioCapture:
         silence_duration: float = 1.5,
         min_speech_duration: float = 0.5,
         max_segment_duration: float = 15.0,
+        vad_use_silero: bool = False,
+        vad_auto_calibrate: bool = True,
     ):
         self._segment_queue = segment_queue
         self._ring_push = ring_push_callback
@@ -62,6 +64,8 @@ class AudioCapture:
         self._silence_duration = silence_duration
         self._min_speech_duration = min_speech_duration
         self._max_segment_duration = max_segment_duration
+        self._vad_use_silero = vad_use_silero
+        self._vad_auto_calibrate = vad_auto_calibrate
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -69,6 +73,15 @@ class AudioCapture:
         self._pa = None
         self._actual_device_name = ""
         self._lock = threading.Lock()
+
+        # Calibration state
+        self._calibrating = vad_auto_calibrate and not vad_use_silero
+        self._calibration_rms: List[float] = []
+        self._calibration_limit = int(2.0 * (sample_rate / chunk_size))
+
+        # Initialize VAD engine
+        from pipeline.vad import create_vad
+        self._vad = create_vad(use_silero=vad_use_silero, threshold=vad_threshold)
 
     # ──────────────────────────────────────────────────────
     # Public API
@@ -98,6 +111,8 @@ class AudioCapture:
         silence_duration: Optional[float] = None,
         min_speech_duration: Optional[float] = None,
         max_segment_duration: Optional[float] = None,
+        use_silero: Optional[bool] = None,
+        auto_calibrate: Optional[bool] = None,
     ) -> None:
         with self._lock:
             if threshold is not None:
@@ -108,6 +123,20 @@ class AudioCapture:
                 self._min_speech_duration = min_speech_duration
             if max_segment_duration is not None:
                 self._max_segment_duration = max_segment_duration
+            if use_silero is not None:
+                self._vad_use_silero = use_silero
+            if auto_calibrate is not None:
+                self._vad_auto_calibrate = auto_calibrate
+
+            # Recreate VAD if threshold or use_silero changes
+            if threshold is not None or use_silero is not None:
+                from pipeline.vad import create_vad
+                self._vad = create_vad(use_silero=self._vad_use_silero, threshold=self._vad_threshold)
+
+            # Trigger calibration if auto_calibrate turned on and not using Silero
+            if auto_calibrate is not None and auto_calibrate and not self._vad_use_silero:
+                self._calibrating = True
+                self._calibration_rms = []
 
     @property
     def device_name(self) -> str:
@@ -214,6 +243,9 @@ class AudioCapture:
                     silence_limit = int(self._silence_duration * fps)
                     min_frames = int(self._min_speech_duration * fps)
                     max_frames = int(self._max_segment_duration * fps)
+                    vad = self._vad
+                    calibrating = self._calibrating
+                    calibration_limit = self._calibration_limit
 
                 data = stream.read(self._chunk_size, exception_on_overflow=False)
                 ts = time.monotonic()
@@ -225,7 +257,23 @@ class AudioCapture:
                 if self._rms_cb:
                     self._rms_cb(rms)
 
-                is_speech = rms > threshold
+                # VAD threshold auto-calibration
+                if calibrating:
+                    with self._lock:
+                        self._calibration_rms.append(rms)
+                        if len(self._calibration_rms) >= calibration_limit:
+                            self._calibrating = False
+                            avg_noise = float(np.mean(self._calibration_rms))
+                            # Set threshold to avg_noise * 1.5 + 80, but at least 150
+                            self._vad_threshold = max(150.0, avg_noise * 1.5 + 80.0)
+                            from pipeline.vad import create_vad
+                            self._vad = create_vad(use_silero=self._vad_use_silero, threshold=self._vad_threshold)
+                            logger.info(f"[Capture] Auto-calibrated EnergyVAD threshold to {self._vad_threshold:.1f} (noise floor: {avg_noise:.1f})")
+                            if self._vad_state_cb:
+                                self._vad_state_cb("calibrated", self._vad_threshold)
+                    continue
+
+                is_speech = vad.is_speech(data)
 
                 if is_speech:
                     vad_state = "speech"

@@ -92,6 +92,9 @@ class Recorder:
         recording_format: str = "ogg",
         sample_rate: int = 16000,
         channels: int = 1,
+        continuous_enabled: bool = False,
+        continuous_chunk_minutes: int = 10,
+        db_writer = None,
     ):
         self._recordings_dir = recordings_dir
         self._pre_buffer_s = pre_buffer_s
@@ -99,6 +102,19 @@ class Recorder:
         self._format = recording_format
         self._sample_rate = sample_rate
         self._channels = channels
+
+        # Continuous recording settings
+        self._continuous_enabled = continuous_enabled
+        self._continuous_chunk_minutes = continuous_chunk_minutes
+        self._db_writer = db_writer
+        self._session_id: Optional[int] = None
+
+        # Continuous recording active file state
+        self._continuous_file = None
+        self._continuous_raw_path = None
+        self._continuous_start_time = None
+        self._continuous_samples = 0
+        self._continuous_max_samples = 0
 
         # Ring buffer — store pre_buffer_s + some margin
         self._ring = RingBuffer(
@@ -113,10 +129,18 @@ class Recorder:
 
         recordings_dir.mkdir(parents=True, exist_ok=True)
 
+    def set_session_id(self, session_id: int) -> None:
+        with self._lock:
+            self._session_id = session_id
+
     def push_chunk(self, chunk: bytes, timestamp: Optional[float] = None) -> None:
         """Call this for every audio chunk from the capture thread."""
         ts = timestamp if timestamp is not None else time.monotonic()
         self._ring.push(chunk, ts)
+
+        # Write continuous stream if enabled
+        if self._continuous_enabled:
+            self._write_continuous_chunk(chunk)
 
         # Feed active post-buffer recordings
         with self._lock:
@@ -257,3 +281,120 @@ class Recorder:
             )
         if post_buffer_s is not None:
             self._post_buffer_s = post_buffer_s
+
+    # ──────────────────────────────────────────────────────
+    # Continuous Recording Internals
+    # ──────────────────────────────────────────────────────
+
+    def _write_continuous_chunk(self, chunk: bytes) -> None:
+        with self._lock:
+            if self._continuous_file is None:
+                self._start_new_continuous_file()
+            
+            if self._continuous_file:
+                try:
+                    self._continuous_file.write(chunk)
+                    self._continuous_samples += len(chunk) // 2
+                except Exception as e:
+                    logger.error(f"[Recorder] Error writing continuous chunk: {e}")
+
+            # Rotate if max samples reached
+            if self._continuous_samples >= self._continuous_max_samples:
+                self._rotate_continuous_file()
+
+    def _start_new_continuous_file(self) -> None:
+        from datetime import datetime, timezone
+        self._continuous_start_time = datetime.now(timezone.utc)
+        
+        # Create continuous directory
+        cont_dir = self._recordings_dir / "continuous" / self._continuous_start_time.strftime("%Y-%m-%d")
+        cont_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"cont_{self._continuous_start_time.strftime('%H%M%S')}.raw"
+        self._continuous_raw_path = cont_dir / filename
+        
+        try:
+            self._continuous_file = open(self._continuous_raw_path, "wb")
+            self._continuous_samples = 0
+            self._continuous_max_samples = self._continuous_chunk_minutes * 60 * self._sample_rate
+            logger.info(f"[Recorder] Started continuous recording: {filename}")
+        except Exception as e:
+            logger.error(f"[Recorder] Failed to open continuous raw file: {e}")
+            self._continuous_file = None
+
+    def _rotate_continuous_file(self) -> None:
+        file_to_close = self._continuous_file
+        raw_path = self._continuous_raw_path
+        start_time = self._continuous_start_time
+        samples = self._continuous_samples
+
+        self._continuous_file = None
+        self._continuous_raw_path = None
+        self._continuous_start_time = None
+        self._continuous_samples = 0
+
+        if file_to_close:
+            try:
+                file_to_close.close()
+                # Finalize in background thread
+                threading.Thread(
+                    target=self._finalize_continuous_file,
+                    args=(raw_path, start_time, samples),
+                    daemon=True,
+                ).start()
+            except Exception as e:
+                logger.error(f"[Recorder] Error closing continuous file during rotation: {e}")
+
+    def _finalize_continuous_file(self, raw_path: Path, start_time: datetime, samples: int) -> None:
+        from datetime import datetime, timezone
+        try:
+            if not raw_path.exists():
+                return
+            
+            with open(raw_path, "rb") as f:
+                pcm = f.read()
+
+            if not pcm:
+                try:
+                    raw_path.unlink()
+                except:
+                    pass
+                return
+
+            ext = self._format
+            out_filename = raw_path.stem + f".{ext}"
+            out_path = raw_path.parent / out_filename
+
+            if ext == "ogg":
+                self._save_ogg(pcm, out_path)
+            else:
+                self._save_wav(pcm, out_path)
+
+            duration_s = len(pcm) / (self._sample_rate * 2 * self._channels)
+
+            if self._db_writer and self._session_id:
+                self._db_writer.save_continuous_recording(
+                    session_id=self._session_id,
+                    start_time=start_time,
+                    end_time=datetime.now(timezone.utc),
+                    filepath=str(out_path),
+                    filename=out_filename,
+                    duration_s=duration_s,
+                )
+                logger.info(f"[Recorder] Continuous chunk saved: {out_filename} ({duration_s:.1f}s)")
+            else:
+                logger.warning("[Recorder] Continuous chunk saved to disk but DB session or writer not available")
+
+            # Clean raw
+            try:
+                raw_path.unlink()
+            except Exception as e:
+                logger.error(f"[Recorder] Error deleting raw continuous file: {e}")
+        except Exception as e:
+            logger.error(f"[Recorder] Error finalizing continuous recording: {e}")
+
+    def stop_continuous_recording(self) -> None:
+        with self._lock:
+            if self._continuous_file:
+                logger.info("[Recorder] Stopping continuous recording")
+                self._rotate_continuous_file()

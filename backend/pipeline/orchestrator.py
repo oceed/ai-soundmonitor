@@ -96,6 +96,8 @@ class PipelineOrchestrator:
             stt_mode=self._rc.get("stt_mode", "auto"),
             llm_mode=self._rc.get("llm_mode", "auto"),
         )
+        if self._recorder:
+            self._recorder.set_session_id(self._session_id)
         logger.info(f"[Orchestrator] Session {self._session_id} created")
 
         # Start workers
@@ -129,6 +131,10 @@ class PipelineOrchestrator:
 
         if self._capture:
             self._capture.stop()
+
+        # Stop continuous recording file
+        if self._recorder:
+            self._recorder.stop_continuous_recording()
 
         # Signal worker threads
         self._segment_queue.put(None)
@@ -205,6 +211,9 @@ class PipelineOrchestrator:
             recording_format=s.recording_format,
             sample_rate=s.sample_rate,
             channels=s.channels,
+            continuous_enabled=rc.get("continuous_recording_enabled", False),
+            continuous_chunk_minutes=rc.get("continuous_chunk_minutes", 10),
+            db_writer=self._db,
         )
 
     def _init_capture(self) -> None:
@@ -224,6 +233,8 @@ class PipelineOrchestrator:
             silence_duration=rc.get("vad_silence_duration", s.vad_silence_duration),
             min_speech_duration=rc.get("vad_min_speech_duration", s.vad_min_speech_duration),
             max_segment_duration=rc.get("vad_max_segment_duration", s.vad_max_segment_duration),
+            vad_use_silero=rc.get("vad_use_silero", False),
+            vad_auto_calibrate=rc.get("vad_auto_calibrate", True),
         )
 
     def _init_mqtt(self) -> None:
@@ -334,8 +345,34 @@ class PipelineOrchestrator:
             timestamp = item["timestamp"]
 
             self._emit("llm_progress", {"segment_no": seg_no, "status": "analyzing"})
-            system_prompt = self._rc.get("system_prompt", "")
-            fraud_result = self._llm.analyze(stt.text, system_prompt)
+            
+            # API Cost Optimization: bypass LLM for short/trivial transcripts
+            text_cleaned = stt.text.strip().lower()
+            words = text_cleaned.split()
+            if len(text_cleaned) < 15 or len(words) < 3:
+                logger.debug(f"[LLM #{seg_no}] Transcript too short ('{stt.text}'), bypassing LLM")
+                from pipeline.llm import FraudResult
+                fraud_result = FraudResult(
+                    raw={
+                        "classification": "NORMAL",
+                        "confidence": 100,
+                        "risk_level": "low",
+                        "fraud_flags": {
+                            "leasing_redirection": False,
+                            "personal_contact": False,
+                            "outside_process": False,
+                            "data_manipulation": False,
+                            "payment_diversion": False
+                        },
+                        "evidence": [],
+                        "reason": "Fragment too brief to evaluate."
+                    },
+                    mode_used="local_bypass",
+                    elapsed_ms=0
+                )
+            else:
+                system_prompt = self._rc.get("system_prompt", "")
+                fraud_result = self._llm.analyze(stt.text, system_prompt)
 
             # Update stats
             with self._lock:

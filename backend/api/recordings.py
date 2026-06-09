@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import get_current_user
 from config import get_settings
 from database import get_db
-from models import Alert, User
+from models import Alert, User, ContinuousRecording
 
 router = APIRouter(prefix="/api/recordings", tags=["recordings"])
 
@@ -63,7 +63,30 @@ async def get_timeline(
             "reason": a.reason,
         })
 
-    return {"date": date, "alerts": items, "total": len(items)}
+    # Fetch continuous recordings for the day
+    result_cont = await db.execute(
+        select(ContinuousRecording)
+        .where(ContinuousRecording.start_time >= day_start, ContinuousRecording.start_time < day_end)
+        .order_by(ContinuousRecording.start_time)
+    )
+    conts = result_cont.scalars().all()
+
+    cont_items = []
+    for c in conts:
+        cont_items.append({
+            "id": c.id,
+            "start_time": c.start_time.isoformat(),
+            "end_time": c.end_time.isoformat(),
+            "duration_s": c.duration_s,
+            "filename": c.filename,
+        })
+
+    return {
+        "date": date,
+        "alerts": items,
+        "continuous_recordings": cont_items,
+        "total": len(items)
+    }
 
 
 @router.get("/{alert_id}/stream")
@@ -119,3 +142,32 @@ async def _get_alert_with_recording(alert_id: int, db: AsyncSession) -> Alert:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Recording file not found on disk")
     return alert
+
+
+@router.get("/continuous/{recording_id}/stream")
+async def stream_continuous_recording(
+    recording_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(ContinuousRecording).where(ContinuousRecording.id == recording_id))
+    rec = result.scalar_one_or_none()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Continuous recording not found")
+
+    file_path = Path(rec.filepath)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+
+    media_type = "audio/ogg" if file_path.suffix == ".ogg" else "audio/wav"
+
+    def iterfile():
+        with open(file_path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+
+    return StreamingResponse(
+        iterfile(),
+        media_type=media_type,
+        headers={"Accept-Ranges": "bytes", "Content-Length": str(file_path.stat().st_size)},
+    )

@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     post_buffer_seconds: float = 15.0
     recording_format: Literal["wav", "ogg"] = "ogg"
     record_on_verdict: Literal["FRAUD", "SUSPICIOUS", "BOTH"] = "BOTH"
+    continuous_recording_enabled: bool = False
+    continuous_chunk_minutes: int = 10
+    vad_auto_calibrate: bool = True
 
     # Retention
     retention_days: int = 7
@@ -183,6 +186,10 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "vad_silence_duration": 1.5,
     "vad_min_speech_duration": 0.5,
     "vad_max_segment_duration": 15.0,
+    "vad_use_silero": False,
+    "vad_auto_calibrate": True,
+    "continuous_recording_enabled": False,
+    "continuous_chunk_minutes": 10,
     "pre_buffer_seconds": 10.0,
     "post_buffer_seconds": 15.0,
     "retention_days": 7,

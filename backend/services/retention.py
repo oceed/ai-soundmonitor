@@ -47,7 +47,19 @@ class RetentionService:
         if not self._recordings_dir.exists():
             return 0
 
-        for date_dir in self._recordings_dir.iterdir():
+        # Clean standard recordings dir
+        count += self._cleanup_dir(self._recordings_dir, cutoff)
+
+        # Clean continuous recordings dir
+        cont_dir = self._recordings_dir / "continuous"
+        if cont_dir.exists():
+            count += self._cleanup_dir(cont_dir, cutoff)
+
+        return count
+
+    def _cleanup_dir(self, base_dir: Path, cutoff: datetime) -> int:
+        count = 0
+        for date_dir in base_dir.iterdir():
             if not date_dir.is_dir():
                 continue
             try:
