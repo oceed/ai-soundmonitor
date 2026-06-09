@@ -50,6 +50,7 @@ class SileroVAD:
     Silero VAD using ONNX Runtime.
     Downloads model silero_vad.onnx on first use.
     Compatible with ARM64 via onnxruntime package.
+    Supports both V4 (h/c inputs) and V5 (state input) Silero VAD models.
     """
 
     MODEL_URL = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
@@ -60,8 +61,13 @@ class SileroVAD:
         self.threshold = threshold
         self.model_path = model_path
         self._session = None
-        self._h = np.zeros((2, 1, 64), dtype=np.float32)
-        self._c = np.zeros((2, 1, 64), dtype=np.float32)
+        self._input_names = []
+        
+        # State variables
+        self._state = None
+        self._h = None
+        self._c = None
+        
         self._load_model()
 
     def _load_model(self) -> None:
@@ -70,10 +76,18 @@ class SileroVAD:
             import os
             if not os.path.exists(self.model_path):
                 self._download_model()
+            
+            # Disable ORT logging/warnings to avoid spamming the console
+            opts = ort.SessionOptions()
+            opts.log_severity_level = 3
+            
             self._session = ort.InferenceSession(
                 self.model_path,
+                sess_options=opts,
                 providers=["CPUExecutionProvider"]
             )
+            self._input_names = [x.name for x in self._session.get_inputs()]
+            self.reset_state()
         except ImportError:
             raise RuntimeError(
                 "onnxruntime is required for Silero VAD. "
@@ -114,17 +128,30 @@ class SileroVAD:
         arr = arr.reshape(1, -1)
         sr = np.array(self.SAMPLE_RATE, dtype=np.int64)
 
-        out, h, c = self._session.run(
-            None,
-            {"input": arr, "sr": sr, "h": self._h, "c": self._c}
-        )
-        self._h = h
-        self._c = c
+        if "state" in self._input_names:
+            # Silero V5 VAD
+            out, state = self._session.run(
+                None,
+                {"input": arr, "sr": sr, "state": self._state}
+            )
+            self._state = state
+        else:
+            # Silero V4 VAD
+            out, h, c = self._session.run(
+                None,
+                {"input": arr, "sr": sr, "h": self._h, "c": self._c}
+            )
+            self._h = h
+            self._c = c
+
         return float(out[0][0]) > self.threshold
 
     def reset_state(self) -> None:
-        self._h = np.zeros((2, 1, 64), dtype=np.float32)
-        self._c = np.zeros((2, 1, 64), dtype=np.float32)
+        if "state" in self._input_names:
+            self._state = np.zeros((2, 1, 128), dtype=np.float32)
+        else:
+            self._h = np.zeros((2, 1, 64), dtype=np.float32)
+            self._c = np.zeros((2, 1, 64), dtype=np.float32)
 
 
 # ─────────────────────────────────────────────────────────
