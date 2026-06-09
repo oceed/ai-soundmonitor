@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import get_current_user
 from config import get_settings
 from database import get_db
-from models import Alert, User, ContinuousRecording
+from models import Alert, User, ContinuousRecording, Segment
 
 router = APIRouter(prefix="/api/recordings", tags=["recordings"])
 
@@ -31,10 +31,11 @@ async def get_timeline(
     _: User = Depends(get_current_user),
 ):
     """
-    Returns all alerts with recordings for a given date.
+    Returns all segments (both normal and alerts) for a given date.
     Used by NVR timeline to render markers.
     """
     from datetime import datetime, timezone, timedelta
+    from sqlalchemy.orm import selectinload
 
     try:
         day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -44,23 +45,26 @@ async def get_timeline(
     day_end = day_start + timedelta(days=1)
 
     result = await db.execute(
-        select(Alert)
-        .where(Alert.timestamp >= day_start, Alert.timestamp < day_end)
-        .order_by(Alert.timestamp)
+        select(Segment)
+        .options(selectinload(Segment.alert))
+        .where(Segment.timestamp >= day_start, Segment.timestamp < day_end)
+        .order_by(Segment.timestamp)
     )
-    alerts = result.scalars().all()
+    segments = result.scalars().all()
 
     items = []
-    for a in alerts:
+    for s in segments:
         items.append({
-            "alert_id": a.id,
-            "timestamp": a.timestamp.isoformat(),
-            "verdict": a.verdict,
-            "confidence": a.confidence,
-            "risk_level": a.risk_level,
-            "has_recording": bool(a.recording_path and a.recording_ready),
-            "duration_s": a.recording_duration_s,
-            "reason": a.reason,
+            "segment_id": s.id,
+            "alert_id": s.alert.id if s.alert else None,
+            "timestamp": s.timestamp.isoformat(),
+            "verdict": s.verdict,
+            "confidence": s.confidence,
+            "risk_level": s.risk_level,
+            "has_recording": bool(s.alert.recording_path and s.alert.recording_ready) if s.alert else False,
+            "duration_s": s.audio_duration_s,
+            "reason": s.reason,
+            "transcript": s.transcript,
         })
 
     # Fetch continuous recordings for the day

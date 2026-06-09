@@ -409,7 +409,22 @@ class PipelineOrchestrator:
                 )
             else:
                 system_prompt = self._rc.get("system_prompt", "")
-                fraud_result = self._llm.analyze(stt.text, system_prompt)
+                context_str = None
+                if self._session_id:
+                    try:
+                        recent = self._db.get_recent_segments(
+                            self._session_id,
+                            limit=5,
+                            max_age_seconds=300,
+                            gap_threshold_seconds=90,
+                        )
+                        if recent:
+                            context_str = "\n".join([f'- "{r["transcript"]}"' for r in recent])
+                            logger.debug(f"[LLM #{seg_no}] Found context:\n{context_str}")
+                    except Exception as e:
+                        logger.error(f"[Orchestrator] Error fetching recent segments for context: {e}")
+                
+                fraud_result = self._llm.analyze(stt.text, system_prompt, context=context_str)
 
             # Update stats
             with self._lock:

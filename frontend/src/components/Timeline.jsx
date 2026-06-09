@@ -1,9 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import { format } from 'date-fns'
 
 const VERDICT_COLORS = {
   FRAUD: 'var(--fraud)',
   SUSPICIOUS: 'var(--suspicious)',
+  NORMAL: 'var(--clear)',
+  CLEAR: 'var(--clear)',
+  ERROR: 'var(--error)',
 }
 
 export function Timeline({
@@ -11,22 +14,23 @@ export function Timeline({
   continuousRecordings = [],
   onAlertClick,
   selectedAlertId,
+  selectedSegmentId,
   currentPlayRatio = null,
   onTrackClick
 }) {
   const trackRef = useRef(null)
 
-  // Map alert timestamp to position (0..1) across 24h
+  // Map segment/alert timestamp to position (0..1) across 24h
   const markers = useMemo(() => {
     return alerts
-      .filter(a => a.has_recording || continuousRecordings.length > 0) // Show all alerts if we have continuous recording
+      .filter(a => a.timestamp)
       .map(a => {
         const ts = new Date(a.timestamp)
         const secondsInDay = ts.getHours() * 3600 + ts.getMinutes() * 60 + ts.getSeconds()
         const position = secondsInDay / 86400
         return { ...a, position }
       })
-  }, [alerts, continuousRecordings])
+  }, [alerts])
 
   const continuousRanges = useMemo(() => {
     return (continuousRecordings || []).map(c => {
@@ -119,38 +123,45 @@ export function Timeline({
               left: `${range.left * 100}%`,
               width: `${range.width * 100}%`,
               top: 0, bottom: 0,
-              background: 'rgba(255, 120, 0, 0.15)',
-              borderLeft: '1px solid rgba(255, 120, 0, 0.3)',
-              borderRight: '1px solid rgba(255, 120, 0, 0.3)',
+              background: 'rgba(255, 120, 0, 0.12)',
+              borderLeft: '1px solid rgba(255, 120, 0, 0.2)',
+              borderRight: '1px solid rgba(255, 120, 0, 0.2)',
               pointerEvents: 'none',
               zIndex: 1,
             }}
           />
         ))}
 
-        {/* Alert markers */}
-        {markers.map(marker => (
-          <div
-            key={marker.alert_id}
-            onClick={(e) => { e.stopPropagation(); onAlertClick?.(marker) }}
-            title={`${format(new Date(marker.timestamp), 'HH:mm:ss')} — ${marker.verdict} (${marker.confidence}%)\n${marker.reason}`}
-            style={{
-              position: 'absolute',
-              left: `${marker.position * 100}%`,
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: marker.alert_id === selectedAlertId ? 14 : 10,
-              height: marker.alert_id === selectedAlertId ? 14 : 10,
-              borderRadius: '50%',
-              background: VERDICT_COLORS[marker.verdict] || 'var(--suspicious)',
-              border: `2px solid ${marker.alert_id === selectedAlertId ? '#fff' : 'transparent'}`,
-              boxShadow: `0 0 ${marker.alert_id === selectedAlertId ? 12 : 6}px ${VERDICT_COLORS[marker.verdict] || 'var(--suspicious)'}`,
-              cursor: 'pointer',
-              zIndex: marker.alert_id === selectedAlertId ? 10 : 5,
-              transition: 'all var(--t-fast)',
-            }}
-          />
-        ))}
+        {/* Segment / Alert markers */}
+        {markers.map(marker => {
+          const isSelected = selectedSegmentId
+            ? marker.segment_id === selectedSegmentId
+            : (marker.alert_id && marker.alert_id === selectedAlertId)
+          const isNormal = marker.verdict === 'NORMAL' || marker.verdict === 'CLEAR'
+          
+          return (
+            <div
+              key={marker.segment_id || marker.alert_id}
+              onClick={(e) => { e.stopPropagation(); onAlertClick?.(marker) }}
+              title={`${format(new Date(marker.timestamp), 'HH:mm:ss')} — ${marker.verdict} (${marker.confidence}%)\n"${marker.transcript || ''}"`}
+              style={{
+                position: 'absolute',
+                left: `${marker.position * 100}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: isSelected ? 14 : (isNormal ? 8 : 10),
+                height: isSelected ? 14 : (isNormal ? 8 : 10),
+                borderRadius: '50%',
+                background: VERDICT_COLORS[marker.verdict] || 'var(--clear)',
+                border: `2px solid ${isSelected ? '#fff' : 'transparent'}`,
+                boxShadow: `0 0 ${isSelected ? 12 : (isNormal ? 4 : 6)}px ${VERDICT_COLORS[marker.verdict] || 'var(--clear)'}`,
+                cursor: 'pointer',
+                zIndex: isSelected ? 10 : 5,
+                transition: 'all var(--t-fast)',
+              }}
+            />
+          )
+        })}
 
         {/* Live Playback head */}
         {currentPlayRatio !== null && (
@@ -192,8 +203,12 @@ export function Timeline({
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--suspicious)', boxShadow: '0 0 4px var(--suspicious)' }} />
           Suspicious
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--clear)', boxShadow: '0 0 4px var(--clear)' }} />
+          Clear / Normal
+        </div>
         <div style={{ marginLeft: 'auto' }}>
-          {markers.length} event{markers.length !== 1 ? 's' : ''} with recordings
+          {markers.length} event{markers.length !== 1 ? 's' : ''} recorded
         </div>
       </div>
     </div>

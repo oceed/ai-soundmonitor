@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { AudioVisualizer } from '../components/AudioVisualizer'
 import { format } from 'date-fns'
-import { startPipeline, stopPipeline } from '../api/config'
+import { startPipeline, stopPipeline, getSegments } from '../api/config'
+import { getRecordingStreamUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 
 const MAX_FEED = 80
@@ -21,8 +22,60 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
   const [stats, setStats] = useState({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
   const [lastVerdict, setLastVerdict] = useState(null)
   const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [playingRecording, setPlayingRecording] = useState(null)
   const feedRef = useRef(null)
   const { addToast } = useToast()
+
+  // Sync stats when pipeline status loads/polls
+  useEffect(() => {
+    if (pipelineStatus?.stats) {
+      setStats({
+        FRAUD: pipelineStatus.stats.FRAUD || 0,
+        SUSPICIOUS: pipelineStatus.stats.SUSPICIOUS || 0,
+        NORMAL: pipelineStatus.stats.NORMAL || 0,
+        segments: pipelineStatus.stats.segments || 0,
+      })
+    }
+  }, [pipelineStatus])
+
+  // Load initial feed when session changes or on mount
+  useEffect(() => {
+    const sessionId = pipelineStatus?.stats?.session_id
+    if (!sessionId) {
+      setFeed([])
+      return
+    }
+
+    setPipelineLoading(true)
+    getSegments({ session_id: sessionId, limit: MAX_FEED })
+      .then(data => {
+        if (data && data.items) {
+          const mapped = data.items.map(s => ({
+            id: s.id,
+            timestamp: s.timestamp,
+            verdict: s.verdict,
+            classification: s.verdict,
+            confidence: s.confidence,
+            transcript: s.transcript,
+            reason: s.reason,
+            flags: s.flags || [],
+            stt_ms: s.stt_ms,
+            llm_ms: s.llm_ms,
+            stt_mode: s.stt_mode,
+            llm_mode: s.llm_mode,
+            has_recording: s.has_recording,
+            alert_id: s.alert_id,
+          }))
+          setFeed(mapped)
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load initial segments:', err)
+      })
+      .finally(() => {
+        setPipelineLoading(false)
+      })
+  }, [pipelineStatus?.stats?.session_id])
 
   // Process incoming WebSocket events
   useEffect(() => {
@@ -43,10 +96,10 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
       case 'segment_result':
         setLastVerdict(event.verdict)
         setFeed(prev => [{
-          id: event.segment_no || Date.now(),
+          id: event.segment_id || event.segment_no || Date.now(),
           timestamp: event.timestamp || new Date().toISOString(),
           verdict: event.verdict,
-          classification: event.classification,
+          classification: event.classification || event.verdict,
           confidence: event.confidence,
           transcript: event.transcript,
           reason: event.reason,
@@ -55,10 +108,29 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
           llm_ms: event.llm_ms,
           stt_mode: event.stt_mode,
           llm_mode: event.llm_mode,
+          has_recording: false,
+          alert_id: null,
         }, ...prev].slice(0, MAX_FEED))
+
+        // Update stats locally
+        setStats(prev => {
+          const verdictKey = event.verdict
+          return {
+            ...prev,
+            segments: (prev.segments || 0) + 1,
+            [verdictKey]: (prev[verdictKey] || 0) + 1,
+          }
+        })
         break
 
       case 'alert':
+        // Link alert_id to feed segment
+        setFeed(prev => prev.map(item => {
+          if (item.id === event.segment_id) {
+            return { ...item, alert_id: event.alert_id }
+          }
+          return item
+        }))
         addToast({
           type: event.verdict === 'FRAUD' ? 'fraud' : 'warning',
           title: `${event.verdict === 'FRAUD' ? '🚨 FRAUD' : '⚠️ SUSPICIOUS'} — ${event.confidence}% confidence`,
@@ -67,9 +139,24 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         })
         break
 
+      case 'alert_recording_ready':
+        // Set has_recording = true on feed segment
+        setFeed(prev => prev.map(item => {
+          if (item.alert_id === event.alert_id || item.id === event.segment_id) {
+            return { ...item, has_recording: true, alert_id: event.alert_id }
+          }
+          return item
+        }))
+        break
+
       case 'pipeline_status':
         if (event.stats) {
-          setStats(s => ({ ...s, ...event.stats }))
+          setStats({
+            FRAUD: event.stats.FRAUD || 0,
+            SUSPICIOUS: event.stats.SUSPICIOUS || 0,
+            NORMAL: event.stats.NORMAL || 0,
+            segments: event.stats.segments || 0,
+          })
         }
         break
     }
@@ -137,10 +224,10 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
           {/* Stats */}
           <div className="grid-4" style={{ gap: 12 }}>
             {[
-              { label: 'Segments', value: pipelineStatus?.stats?.segments || stats.segments || 0, cls: 'stat-accent' },
-              { label: 'FRAUD', value: pipelineStatus?.stats?.FRAUD || stats.FRAUD || 0, cls: 'stat-fraud' },
-              { label: 'Suspicious', value: pipelineStatus?.stats?.SUSPICIOUS || stats.SUSPICIOUS || 0, cls: 'stat-suspicious' },
-              { label: 'Clear', value: pipelineStatus?.stats?.NORMAL || stats.NORMAL || 0, cls: 'stat-clear' },
+              { label: 'Segments', value: stats.segments, cls: 'stat-accent' },
+              { label: 'FRAUD', value: stats.FRAUD, cls: 'stat-fraud' },
+              { label: 'Suspicious', value: stats.SUSPICIOUS, cls: 'stat-suspicious' },
+              { label: 'Clear', value: stats.NORMAL, cls: 'stat-clear' },
             ].map(s => (
               <div key={s.label} className={`stat-card ${s.cls}`}>
                 <div className="stat-label">{s.label}</div>
@@ -180,17 +267,96 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
               </div>
             ) : (
               feed.map((item, i) => (
-                <FeedItem key={item.id} item={item} isNew={i === 0} />
+                <FeedItem key={item.id} item={item} isNew={i === 0} onPlayClick={setPlayingRecording} />
               ))
             )}
           </div>
         </div>
       </div>
+
+      {/* Audio Playback Popup Modal */}
+      {playingRecording && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px',
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '480px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Play Recording
+              </h3>
+              <button
+                onClick={() => setPlayingRecording(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  padding: 4
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-elevated)',
+              padding: '12px 14px',
+              borderRadius: 8,
+              borderLeft: `3px solid ${VERDICT_CONFIG[playingRecording.verdict]?.color || 'var(--accent)'}`,
+              fontSize: 13,
+            }}>
+              <div style={{ fontWeight: 700, color: VERDICT_CONFIG[playingRecording.verdict]?.color, marginBottom: 4 }}>
+                {playingRecording.classification || playingRecording.verdict} — {playingRecording.confidence}% confidence
+              </div>
+              <div style={{ color: 'var(--text-primary)', fontStyle: 'italic', marginBottom: 4 }}>
+                "{playingRecording.transcript}"
+              </div>
+              {playingRecording.reason && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 4 }}>
+                  {playingRecording.reason}
+                </div>
+              )}
+            </div>
+
+            <div className="audio-player" style={{ marginTop: 8 }}>
+              <audio
+                autoPlay
+                src={getRecordingStreamUrl(playingRecording.alert_id)}
+                controls
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function FeedItem({ item, isNew }) {
+function FeedItem({ item, isNew, onPlayClick }) {
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.ERROR
 
   return (
@@ -218,10 +384,32 @@ function FeedItem({ item, isNew }) {
             <span key={f} className="badge badge-fraud" style={{ fontSize: 9 }}>{f}</span>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
           <span>STT {item.stt_ms}ms</span>
           <span>LLM {item.llm_ms}ms</span>
           <span>{item.timestamp ? format(new Date(item.timestamp), 'HH:mm:ss') : ''}</span>
+          {item.has_recording && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onPlayClick(item)
+              }}
+              className="btn btn-primary btn-sm"
+              style={{
+                padding: '2px 8px',
+                fontSize: '9px',
+                height: 'auto',
+                lineHeight: 1,
+                marginLeft: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 2,
+                cursor: 'pointer',
+              }}
+            >
+              ▶ Listen
+            </button>
+          )}
         </div>
       </div>
 

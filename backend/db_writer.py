@@ -112,6 +112,49 @@ class DBWriter:
             s.commit()
             return seg.id
 
+    def get_recent_segments(
+        self,
+        session_id: int,
+        limit: int = 5,
+        max_age_seconds: int = 300,
+        gap_threshold_seconds: int = 90,
+    ) -> list[dict]:
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        
+        with self._session() as s:
+            from sqlalchemy import select, desc
+            q = (
+                select(Segment)
+                .where(Segment.session_id == session_id)
+                .where(Segment.timestamp >= cutoff)
+                .order_by(desc(Segment.timestamp))
+                .limit(limit + 2)
+            )
+            result = s.execute(q)
+            segments = result.scalars().all()
+            
+            filtered = []
+            prev_ts = None
+            for seg in segments:
+                seg_ts = seg.timestamp
+                if seg_ts.tzinfo is None:
+                    seg_ts = seg_ts.replace(tzinfo=timezone.utc)
+                
+                if prev_ts is not None:
+                    gap = (prev_ts - seg_ts).total_seconds()
+                    if gap > gap_threshold_seconds:
+                        break
+                
+                filtered.append(seg)
+                prev_ts = seg_ts
+                
+                if len(filtered) >= limit:
+                    break
+            
+            filtered.reverse()
+            return [{"transcript": seg.transcript, "timestamp": seg.timestamp} for seg in filtered]
+
     # ──────────────────────────────────────────────────────
     # Alerts
     # ──────────────────────────────────────────────────────

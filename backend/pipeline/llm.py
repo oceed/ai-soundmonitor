@@ -112,18 +112,22 @@ class GroqLLM:
         self._model = model
         self._timeout = timeout
 
-    def analyze(self, transcript: str, system_prompt: str) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
         t0 = time.time()
         try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            if context:
+                messages.append({"role": "user", "content": f"Recent Conversation Context:\n{context}"})
+            messages.append({"role": "user", "content": f'Current Segment Transcript:\n"{transcript}"\n\nAnalysis:'})
+
             response = self._client.chat.completions.create(
                 model=self._model,
                 temperature=0,
                 max_completion_tokens=1024,
                 timeout=self._timeout,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f'Transcript:\n"{transcript}"\n\nAnalysis:'},
-                ],
+                messages=messages,
             )
             raw_text = response.choices[0].message.content or ""
             elapsed = int((time.time() - t0) * 1000)
@@ -154,24 +158,24 @@ class LocalLLM:
         self._endpoint_type = endpoint_type
         self._timeout = timeout
 
-    def analyze(self, transcript: str, system_prompt: str) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
         t0 = time.time()
         try:
             if self._endpoint_type == "ollama":
-                return self._analyze_ollama(transcript, system_prompt, t0)
+                return self._analyze_ollama(transcript, system_prompt, t0, context=context)
             else:
-                return self._analyze_openai(transcript, system_prompt, t0)
+                return self._analyze_openai(transcript, system_prompt, t0, context=context)
         except Exception as e:
             elapsed = int((time.time() - t0) * 1000)
             logger.error(f"[LLM] Local error: {e}")
             return _error_result("local", elapsed, str(e))
 
-    def _analyze_ollama(self, transcript: str, system_prompt: str, t0: float) -> FraudResult:
-        prompt = (
-            f"{system_prompt}\n\n"
-            f'Transcript:\n"{transcript}"\n\n'
-            "Analysis:"
-        )
+    def _analyze_ollama(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None) -> FraudResult:
+        prompt = system_prompt + "\n\n"
+        if context:
+            prompt += f"Recent Conversation Context:\n{context}\n\n"
+        prompt += f'Current Segment Transcript:\n"{transcript}"\n\nAnalysis:'
+
         with httpx.Client(timeout=self._timeout) as client:
             resp = client.post(
                 f"{self._base_url}/api/generate",
@@ -187,17 +191,21 @@ class LocalLLM:
             return FraudResult(raw=parsed, mode_used="local", elapsed_ms=elapsed)
         return _error_result("local", elapsed, f"Invalid JSON: {raw_text[:80]}")
 
-    def _analyze_openai(self, transcript: str, system_prompt: str, t0: float) -> FraudResult:
+    def _analyze_openai(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None) -> FraudResult:
         with httpx.Client(timeout=self._timeout) as client:
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            if context:
+                messages.append({"role": "user", "content": f"Recent Conversation Context:\n{context}"})
+            messages.append({"role": "user", "content": f'Current Segment Transcript:\n"{transcript}"\n\nAnalysis:'})
+
             resp = client.post(
                 f"{self._base_url}/v1/chat/completions",
                 json={
                     "model": self._model,
                     "temperature": 0,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f'Transcript:\n"{transcript}"\n\nAnalysis:'},
-                    ],
+                    "messages": messages,
                 },
             )
             resp.raise_for_status()
@@ -242,25 +250,25 @@ class LLMEngine:
             timeout=timeout,
         )
 
-    def analyze(self, transcript: str, system_prompt: str) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
         mode = self._mode
 
         if mode == "api":
             if self._groq:
-                return self._groq.analyze(transcript, system_prompt)
+                return self._groq.analyze(transcript, system_prompt, context=context)
             return _error_result("api", 0, "Groq not configured")
 
         if mode == "local":
-            return self._local.analyze(transcript, system_prompt)
+            return self._local.analyze(transcript, system_prompt, context=context)
 
         # auto: try API first, fallback to local
         if self._groq:
-            result = self._groq.analyze(transcript, system_prompt)
+            result = self._groq.analyze(transcript, system_prompt, context=context)
             if result.error is None:
                 return result
             logger.warning(f"[LLM] API failed ({result.error}), trying local fallback")
 
-        return self._local.analyze(transcript, system_prompt)
+        return self._local.analyze(transcript, system_prompt, context=context)
 
     def update_mode(self, mode: str) -> None:
         self._mode = mode

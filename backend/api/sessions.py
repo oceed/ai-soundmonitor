@@ -69,7 +69,8 @@ async def list_segments(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(Segment).order_by(desc(Segment.timestamp))
+    from sqlalchemy.orm import selectinload
+    q = select(Segment).options(selectinload(Segment.alert)).order_by(desc(Segment.timestamp))
     if session_id:
         q = q.where(Segment.session_id == session_id)
     if verdict:
@@ -87,6 +88,9 @@ async def list_segments(
                 "confidence": s.confidence,
                 "risk_level": s.risk_level,
                 "reason": s.reason,
+                "flags": [k for k, v in s.fraud_flags.items() if v] if s.fraud_flags else [],
+                "has_recording": bool(s.alert.recording_path and s.alert.recording_ready) if s.alert else False,
+                "alert_id": s.alert.id if s.alert else None,
                 "stt_ms": s.stt_ms,
                 "llm_ms": s.llm_ms,
                 "stt_mode": s.stt_mode_used,

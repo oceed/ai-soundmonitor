@@ -76,9 +76,18 @@ export function Playback() {
         audioRef.current.play().catch(() => {})
       } else {
         setActiveContinuousRec(null)
-        audioRef.current.src = getRecordingStreamUrl(alert.alert_id)
-        audioRef.current.load()
-        audioRef.current.play().catch(() => {})
+        if (alert.alert_id) {
+          audioRef.current.src = getRecordingStreamUrl(alert.alert_id)
+          audioRef.current.load()
+          audioRef.current.play().catch(() => {})
+        } else {
+          addToast({
+            type: 'warning',
+            title: 'No Recording Available',
+            body: 'Continuous recording was not active at this time, and no alert clip exists for clear segments.'
+          })
+          audioRef.current.src = ''
+        }
       }
     }, 100)
   }
@@ -132,6 +141,9 @@ export function Playback() {
   const VERDICT_COLOR = {
     FRAUD: 'var(--fraud)',
     SUSPICIOUS: 'var(--suspicious)',
+    NORMAL: 'var(--clear)',
+    CLEAR: 'var(--clear)',
+    ERROR: 'var(--error)',
   }
 
   return (
@@ -181,6 +193,7 @@ export function Playback() {
               continuousRecordings={timelineData?.continuous_recordings || []}
               onAlertClick={handleAlertClick}
               selectedAlertId={selectedAlert?.alert_id}
+              selectedSegmentId={selectedAlert?.segment_id}
               currentPlayRatio={currentPlayRatio}
               onTrackClick={handleTrackClick}
             />
@@ -199,38 +212,49 @@ export function Playback() {
                 <div className="empty-state" style={{ padding: 30 }}>
                   <div className="empty-state-icon">📅</div>
                   <div className="empty-state-title">No events</div>
-                  <div className="empty-state-sub">No compliance alerts on this date</div>
+                  <div className="empty-state-sub">No recorded segments on this date</div>
                 </div>
               ) : (
-                timelineData?.alerts?.map(alert => (
-                  <div
-                    key={alert.alert_id}
-                    onClick={() => handleAlertClick(alert)}
-                    style={{
-                      padding: '10px 12px',
-                      background: selectedAlert?.alert_id === alert.alert_id ? 'var(--bg-hover)' : 'var(--bg-card)',
-                      border: `1px solid ${selectedAlert?.alert_id === alert.alert_id ? VERDICT_COLOR[alert.verdict] || 'var(--border-active)' : 'var(--border)'}`,
-                      borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      transition: 'all var(--t-fast)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
-                        {alert.verdict}
-                      </span>
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{alert.confidence}%</span>
-                      {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
+                timelineData?.alerts?.map(alert => {
+                  const isSelected = selectedAlert?.segment_id 
+                    ? selectedAlert.segment_id === alert.segment_id 
+                    : (selectedAlert?.alert_id && selectedAlert.alert_id === alert.alert_id)
+                  
+                  return (
+                    <div
+                      key={alert.segment_id || alert.alert_id}
+                      onClick={() => handleAlertClick(alert)}
+                      style={{
+                        padding: '10px 12px',
+                        background: isSelected ? 'var(--bg-hover)' : 'var(--bg-card)',
+                        border: `1px solid ${isSelected ? VERDICT_COLOR[alert.verdict] || 'var(--border-active)' : 'var(--border)'}`,
+                        borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        transition: 'all var(--t-fast)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
+                          {alert.verdict}
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{alert.confidence}%</span>
+                        {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
+                      </div>
+                      <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                        {format(new Date(alert.timestamp), 'HH:mm:ss')}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
+                        "{alert.transcript || 'No speech recorded'}"
+                      </div>
+                      {alert.reason && (
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {alert.reason}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                      {format(new Date(alert.timestamp), 'HH:mm:ss')}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {alert.reason}
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -247,7 +271,7 @@ export function Playback() {
                         color: VERDICT_COLOR[selectedAlert.verdict] || 'var(--text-secondary)',
                         marginBottom: 4,
                       }}>
-                        {selectedAlert.verdict === 'FRAUD' ? '🚨' : '⚠️'} {selectedAlert.verdict} — {selectedAlert.confidence}% confidence
+                        {selectedAlert.verdict === 'FRAUD' ? '🚨' : selectedAlert.verdict === 'SUSPICIOUS' ? '⚠️' : '✓'} {selectedAlert.verdict} — {selectedAlert.confidence}% confidence
                         {activeContinuousRec && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: 'var(--accent)' }}>(Continuous Mode)</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -277,8 +301,16 @@ export function Playback() {
                   </div>
                 </div>
 
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  {selectedAlert ? selectedAlert.reason : 'Listening to the continuous timeline. Click on any event or markers to jump to specific points.'}
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selectedAlert && (
+                    <div style={{ background: 'var(--bg-elevated)', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Transcript</div>
+                      <div style={{ color: 'var(--text-primary)', fontStyle: 'italic' }}>"{selectedAlert.transcript || 'No speech recorded'}"</div>
+                    </div>
+                  )}
+                  <div>
+                    {selectedAlert ? (selectedAlert.reason || 'Clear segment with no compliance violations flagged.') : 'Listening to the continuous timeline. Click on any event or markers to jump to specific points.'}
+                  </div>
                 </div>
 
                 <div className="audio-player" style={{ marginTop: 'auto' }}>
