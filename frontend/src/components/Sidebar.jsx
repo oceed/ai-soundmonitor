@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
+import logo from '../assets/logo.png'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '⬡', exact: true },
@@ -28,13 +29,7 @@ export function Sidebar({ pipelineRunning, wsStatus }) {
         borderBottom: '1px solid var(--border)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{
-            width: 32, height: 32,
-            background: 'linear-gradient(135deg, var(--accent), #a78bfa)',
-            borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14, fontWeight: 800, color: '#fff',
-          }}>B</div>
+          <img src={logo} alt="BFI Logo" style={{ width: 32, height: 32, objectFit: 'contain' }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>BFI Fraud</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>DETECTION v1.0</div>
