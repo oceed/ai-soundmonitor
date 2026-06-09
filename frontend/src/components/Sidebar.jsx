@@ -1,6 +1,8 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
-import logo from '../assets/logo.png'
+import voiceguardLogo from '../assets/voiceguard.png'
+import protectqubeLogo from '../assets/protectqube.png'
+import protectqubedLogo from '../assets/protectqubed.png'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '⬡', exact: true },
@@ -9,30 +11,18 @@ const NAV_ITEMS = [
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
-export function Sidebar({ pipelineRunning, wsStatus }) {
+export function Sidebar({ pipelineRunning, wsStatus, theme, toggleTheme }) {
   const { user, logout } = useAuth()
 
   return (
-    <aside style={{
-      position: 'fixed',
-      left: 0, top: 0, bottom: 0,
-      width: 'var(--sidebar-width)',
-      background: 'var(--bg-surface)',
-      borderRight: '1px solid var(--border)',
-      display: 'flex',
-      flexDirection: 'column',
-      zIndex: 100,
-    }}>
-      {/* Logo */}
-      <div style={{
-        padding: '20px 20px 16px',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <img src={logo} alt="BFI Logo" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+    <aside className="sidebar">
+      {/* Logo Area */}
+      <div className="sidebar-logo-area">
+        <div className="sidebar-brand">
+          <img src={voiceguardLogo} alt="VoiceGuard Logo" className="sidebar-brand-logo" />
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>BFI Fraud</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>DETECTION v1.0</div>
+            <div className="sidebar-brand-text-main">VoiceGuard</div>
+            <div className="sidebar-brand-text-sub">by ProtectQube</div>
           </div>
         </div>
 
@@ -54,26 +44,13 @@ export function Sidebar({ pipelineRunning, wsStatus }) {
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav className="sidebar-nav">
         {NAV_ITEMS.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.exact}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '9px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              fontSize: 13,
-              fontWeight: isActive ? 600 : 500,
-              color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-              background: isActive ? 'var(--accent-glow)' : 'transparent',
-              border: `1px solid ${isActive ? 'rgba(79, 141, 255, 0.2)' : 'transparent'}`,
-              transition: 'all var(--t-fast)',
-            })}
+            className="sidebar-nav-link"
           >
             <span style={{ fontSize: 15, width: 18, textAlign: 'center' }}>{item.icon}</span>
             {item.label}
@@ -81,46 +58,101 @@ export function Sidebar({ pipelineRunning, wsStatus }) {
         ))}
       </nav>
 
-      {/* WS Status */}
+      {/* Footer Area with WS, Theme Toggle, User, and Branding */}
       <div style={{
-        padding: '10px 16px',
+        padding: '12px 16px',
         borderTop: '1px solid var(--border)',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: 11, color: 'var(--text-muted)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        background: 'var(--bg-surface)'
       }}>
-        <div className={`status-dot ${wsStatus === 'connected' ? 'status-dot-blue' : 'status-dot-gray'}`} style={{ width: 6, height: 6 }} />
-        WebSocket: {wsStatus}
-      </div>
-
-      {/* User */}
-      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 28, height: 28,
-            background: 'var(--accent-glow)',
-            border: '1px solid var(--accent)',
-            borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 700, color: 'var(--accent)',
-          }}>
-            {user?.username?.[0]?.toUpperCase() || 'A'}
+        {/* WS and Theme Toggle Row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+            <div className={`status-dot ${wsStatus === 'connected' ? 'status-dot-blue' : 'status-dot-gray'}`} style={{ width: 6, height: 6 }} />
+            <span>WS: {wsStatus}</span>
           </div>
-          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
-            {user?.username || 'admin'}
+          
+          <button 
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+            style={{ cursor: 'pointer' }}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+        </div>
+
+        {/* User Info & Logout Row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28,
+              height: 28,
+              background: 'var(--accent-glow)',
+              border: '1px solid var(--accent)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 11,
+              fontWeight: 700,
+              color: 'var(--accent)',
+            }}>
+              {user?.username?.[0]?.toUpperCase() || 'A'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                {user?.username || 'admin'}
+              </span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1 }}>
+                System Op
+              </span>
+            </div>
+          </div>
+
+          <button 
+            onClick={logout}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              fontSize: 16,
+              padding: 4,
+              borderRadius: 4,
+              transition: 'all var(--t-fast)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Logout"
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--fraud)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+          >
+            ⎋
+          </button>
+        </div>
+
+        {/* Branding badge footer */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          paddingTop: 4,
+          opacity: 0.75,
+        }}>
+          <img 
+            src={theme === 'dark' ? protectqubedLogo : protectqubeLogo} 
+            alt="ProtectQube Logo" 
+            style={{ height: 12, objectFit: 'contain' }} 
+          />
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>
+            Secured by ProtectQube
           </span>
         </div>
-        <button onClick={logout} style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-muted)', fontSize: 13, padding: 4,
-          borderRadius: 4, transition: 'color var(--t-fast)',
-        }}
-          title="Logout"
-          onMouseEnter={e => e.target.style.color = 'var(--fraud)'}
-          onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
-        >
-          ⎋
-        </button>
       </div>
     </aside>
   )

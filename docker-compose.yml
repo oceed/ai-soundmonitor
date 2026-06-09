@@ -1,7 +1,7 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────
-# BFI Fraud Detection — Docker Compose
+# VoiceGuard Fraud Detection — Docker Compose
 # Target: OrangePi 5 Pro (ARM64, Ubuntu/Debian)
 # ─────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: bfi-backend
+    container_name: voiceguard-backend
     restart: unless-stopped
     env_file:
       - .env
@@ -47,7 +47,7 @@ services:
       args:
         - VITE_API_URL=
         - VITE_WS_URL=
-    container_name: bfi-frontend
+    container_name: voiceguard-frontend
     restart: unless-stopped
     ports:
       - "3000:80"
@@ -65,7 +65,7 @@ services:
 # To also containerize Ollama (CPU-only, slower):
 #   ollama:
 #     image: ollama/ollama:latest
-#     container_name: bfi-ollama
+#     container_name: voiceguard-ollama
 #     restart: unless-stopped
 #     ports:
 #       - "11434:11434"

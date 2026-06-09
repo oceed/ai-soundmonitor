@@ -1,13 +1,13 @@
-# BFI Finance — Voice Fraud Detection System
+# VoiceGuard — Voice Fraud Detection System
 
-Real-time voice fraud detection for BFI Finance store locations. Continuously monitors conversations via microphone, transcribes speech (Groq Whisper API or local faster-whisper), classifies fraud indicators (Groq LLM or local Ollama), and alerts via web dashboard + MQTT.
+Real-time voice fraud detection by ProtectQube. Continuously monitors conversations via microphone, transcribes speech (Groq Whisper API or local faster-whisper), classifies fraud indicators (Groq LLM or local Ollama), and alerts via web dashboard + MQTT.
 
 ## Quick Start (OrangePi 5 Pro)
 
 ```bash
 # 1. Clone repository
-git clone <repo-url> bfi-fraud-detection
-cd bfi-fraud-detection
+git clone <repo-url> voiceguard-fraud-detection
+cd voiceguard-fraud-detection
 
 # 2. Configure environment
 cp .env.example .env
@@ -76,7 +76,7 @@ When MQTT is enabled, each alert publishes:
   "flags": ["payment_diversion"],
   "transcript": "...",
   "timestamp": "2025-01-15T10:30:00Z",
-  "device_name": "BFI-Store-01",
+  "device_name": "VoiceGuard-Store-01",
   "session_id": 7
 }
 ```

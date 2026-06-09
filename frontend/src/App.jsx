@@ -17,6 +17,16 @@ const MAX_EVENTS = 200
 function AppLayout() {
   const [liveEvents, setLiveEvents] = useState([])
   const [pipelineStatus, setPipelineStatus] = useState(null)
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+  }, [])
 
   const handleMessage = useCallback((msg) => {
     setLiveEvents(prev => [...prev, msg].slice(-MAX_EVENTS))
@@ -40,6 +50,8 @@ function AppLayout() {
       <Sidebar
         pipelineRunning={pipelineStatus?.running ?? false}
         wsStatus={wsStatus}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
       <div className="main-content">
         <Routes>
@@ -55,6 +67,11 @@ function AppLayout() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const activeTheme = localStorage.getItem('theme') || 'dark'
+    document.documentElement.setAttribute('data-theme', activeTheme)
+  }, [])
+
   return (
     <BrowserRouter>
       <AuthProvider>

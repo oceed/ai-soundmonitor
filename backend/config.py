@@ -76,8 +76,8 @@ class Settings(BaseSettings):
     mqtt_enabled: bool = False
     mqtt_broker_host: str = "localhost"
     mqtt_broker_port: int = 1883
-    mqtt_topic: str = "bfi/fraud/alerts"
-    mqtt_client_id: str = "bfi-fraud-detector"
+    mqtt_topic: str = "voiceguard/fraud/alerts"
+    mqtt_client_id: str = "voiceguard-fraud-detector"
     mqtt_username: str = ""
     mqtt_password: str = ""
     mqtt_use_tls: bool = False
@@ -126,9 +126,9 @@ def get_settings() -> Settings:
 # Runtime Config — DB-backed, in-memory cache
 # ─────────────────────────────────────────────────────────
 
-_DEFAULT_SYSTEM_PROMPT = """You are an AI Compliance Officer for BFI Finance, a financing company.
+_DEFAULT_SYSTEM_PROMPT = """You are an AI Compliance Officer for VoiceGuard by ProtectQube.
 
-Your task is to analyze conversation transcripts captured from Speech-to-Text (STT) at BFI Finance store locations.
+Your task is to analyze conversation transcripts captured from Speech-to-Text (STT) at retail/store locations.
 
 IMPORTANT:
 - Transcripts may be imperfect due to STT errors. Focus on substance, not spelling.
@@ -140,9 +140,9 @@ Fraud categories to detect:
 1. NORMAL — No fraud indicators detected.
 2. FRAUD_LEASING_REDIRECTION — Agent redirects customer to another leasing company.
 3. FRAUD_PERSONAL_CONTACT — Agent shares personal contact info for off-system transactions.
-4. FRAUD_OUTSIDE_PROCESS — Transaction or negotiation happening outside official BFI process.
+4. FRAUD_OUTSIDE_PROCESS — Transaction or negotiation happening outside official processes.
 5. FRAUD_DATA_MANIPULATION — False or manipulated customer data (income, assets, ID).
-6. FRAUD_PAYMENT_DIVERSION — Payment directed to personal account or non-BFI channel.
+6. FRAUD_PAYMENT_DIVERSION — Payment directed to personal account or non-official channels.
 7. SUSPICIOUS — Something seems off but cannot be firmly classified as fraud.
 
 Output MUST be valid JSON only. No markdown, no ```json blocks.
@@ -168,14 +168,14 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "fraud_categories": [
         {"key": "FRAUD_LEASING_REDIRECTION", "label": "Leasing Redirection", "description": "Redirecting customer to competitor"},
         {"key": "FRAUD_PERSONAL_CONTACT", "label": "Personal Contact", "description": "Sharing personal contact for off-system deals"},
-        {"key": "FRAUD_OUTSIDE_PROCESS", "label": "Outside Process", "description": "Transaction outside BFI official process"},
+        {"key": "FRAUD_OUTSIDE_PROCESS", "label": "Outside Process", "description": "Transaction outside official process"},
         {"key": "FRAUD_DATA_MANIPULATION", "label": "Data Manipulation", "description": "Falsifying customer data or documents"},
         {"key": "FRAUD_PAYMENT_DIVERSION", "label": "Payment Diversion", "description": "Directing payment to personal accounts"},
     ],
     "alert_verdicts": ["FRAUD_LEASING_REDIRECTION", "FRAUD_PERSONAL_CONTACT",
                        "FRAUD_OUTSIDE_PROCESS", "FRAUD_DATA_MANIPULATION",
                        "FRAUD_PAYMENT_DIVERSION", "SUSPICIOUS"],
-    "device_name": "BFI-Store-01",
+    "device_name": "VoiceGuard-Store-01",
     # These mirror .env but can be overridden at runtime
     "stt_mode": "auto",
     "llm_mode": "auto",
@@ -189,8 +189,8 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "mqtt_enabled": False,
     "mqtt_broker_host": "localhost",
     "mqtt_broker_port": 1883,
-    "mqtt_topic": "bfi/fraud/alerts",
-    "mqtt_client_id": "bfi-fraud-detector",
+    "mqtt_topic": "voiceguard/fraud/alerts",
+    "mqtt_client_id": "voiceguard-fraud-detector",
     "mqtt_username": "",
     "mqtt_password": "",
     "mqtt_use_tls": False,

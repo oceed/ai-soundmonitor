@@ -141,7 +141,7 @@ function Toggle({ checked, onChange }) {
 
 function GeneralTab({ config, onSave, saving }) {
   const [retDays, setRetDays] = useState(config.retention_days ?? 7)
-  const [devName, setDevName] = useState(config.device_name ?? 'BFI-Store-01')
+  const [devName, setDevName] = useState(config.device_name ?? 'VoiceGuard-Store-01')
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -332,7 +332,7 @@ function NotificationsTab({ config, onSave, saving }) {
   const [mqttEnabled, setMqttEnabled] = useState(config.mqtt_enabled ?? false)
   const [mqttHost, setMqttHost] = useState(config.mqtt_broker_host ?? '')
   const [mqttPort, setMqttPort] = useState(config.mqtt_broker_port ?? 1883)
-  const [mqttTopic, setMqttTopic] = useState(config.mqtt_topic ?? 'bfi/fraud/alerts')
+  const [mqttTopic, setMqttTopic] = useState(config.mqtt_topic ?? 'voiceguard/fraud/alerts')
   const [mqttUser, setMqttUser] = useState(config.mqtt_username ?? '')
   const [mqttPass, setMqttPass] = useState('')
   const [mqttQos, setMqttQos] = useState(config.mqtt_qos ?? 1)

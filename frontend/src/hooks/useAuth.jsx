@@ -8,12 +8,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('bfi_token')
+    const token = localStorage.getItem('voiceguard_token')
     if (token) {
       getMe()
         .then(setUser)
         .catch(() => {
-          localStorage.removeItem('bfi_token')
+          localStorage.removeItem('voiceguard_token')
           setUser(null)
         })
         .finally(() => setLoading(false))
@@ -24,14 +24,14 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     const data = await apiLogin(username, password)
-    localStorage.setItem('bfi_token', data.access_token)
+    localStorage.setItem('voiceguard_token', data.access_token)
     const me = await getMe()
     setUser(me)
     return me
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('bfi_token')
+    localStorage.removeItem('voiceguard_token')
     setUser(null)
   }, [])
 

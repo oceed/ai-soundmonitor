@@ -15,7 +15,7 @@ export function useWebSocket(onMessage) {
   const [status, setStatus] = useState('disconnected') // connecting | connected | disconnected | error
 
   const connect = useCallback(() => {
-    const token = localStorage.getItem('bfi_token')
+    const token = localStorage.getItem('voiceguard_token')
     if (!token) {
       setStatus('error')
       return

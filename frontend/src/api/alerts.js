@@ -16,7 +16,7 @@ export const getTimeline = (date) =>
   client.get('/api/recordings/timeline', { params: { date } }).then(r => r.data)
 
 export const getRecordingStreamUrl = (alertId) => {
-  const token = localStorage.getItem('bfi_token')
+  const token = localStorage.getItem('voiceguard_token')
   const base = import.meta.env.VITE_API_URL || ''
   return `${base}/api/recordings/${alertId}/stream?token=${token}`
 }

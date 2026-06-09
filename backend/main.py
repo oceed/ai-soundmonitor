@@ -145,9 +145,9 @@ async def lifespan(app: FastAPI):
 settings = get_settings()
 
 app = FastAPI(
-    title="BFI Fraud Detection API",
+    title="VoiceGuard Fraud Detection API",
     version="1.0.0",
-    description="Real-time voice fraud detection for BFI Finance",
+    description="Real-time voice fraud detection by ProtectQube",
     lifespan=lifespan,
 )
 

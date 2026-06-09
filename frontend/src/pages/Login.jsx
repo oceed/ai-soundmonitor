@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
+import voiceguardLogo from '../assets/voiceguard.png'
+import protectqubeLogo from '../assets/protectqube.png'
+import protectqubedLogo from '../assets/protectqubed.png'
 
 export function Login() {
   const [username, setUsername] = useState('')
@@ -24,18 +27,23 @@ export function Login() {
     }
   }
 
+  const isDark = (localStorage.getItem('theme') || 'dark') === 'dark'
+  const protectLogo = isDark ? protectqubedLogo : protectqubeLogo
+
   return (
     <div style={{
       height: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(ellipse at 50% 0%, rgba(79,141,255,0.08) 0%, var(--bg-base) 70%)',
+      background: 'radial-gradient(ellipse at 50% 0%, rgba(255,140,0,0.08) 0%, var(--bg-base) 70%)',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
       {/* Decorative grid */}
       <div style={{
         position: 'absolute', inset: 0,
-        backgroundImage: 'linear-gradient(rgba(79,141,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(79,141,255,0.03) 1px, transparent 1px)',
+        backgroundImage: 'linear-gradient(rgba(255,140,0,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,140,0,0.03) 1px, transparent 1px)',
         backgroundSize: '50px 50px',
         pointerEvents: 'none',
       }} />
@@ -47,20 +55,24 @@ export function Login() {
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div style={{
-            width: 64, height: 64,
-            background: 'linear-gradient(135deg, var(--accent), #a78bfa)',
-            borderRadius: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, fontWeight: 800, color: '#fff',
-            margin: '0 auto 16px',
-            boxShadow: '0 0 40px rgba(79, 141, 255, 0.4)',
-          }}>B</div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>BFI Fraud Detection</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-            Real-time voice fraud monitoring system
+        {/* Logo and Header */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <img 
+            src={voiceguardLogo} 
+            alt="VoiceGuard Logo" 
+            style={{ 
+              width: 72, 
+              height: 72, 
+              objectFit: 'contain',
+              margin: '0 auto 12px',
+              filter: 'drop-shadow(0 4px 16px var(--accent-glow))' 
+            }} 
+          />
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 800, marginBottom: 4, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+            VoiceGuard
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500 }}>
+            Real-time Voice Fraud Detection System
           </p>
         </div>
 
@@ -71,6 +83,8 @@ export function Login() {
           borderRadius: 'var(--radius-lg)',
           padding: 32,
           boxShadow: 'var(--shadow-lg)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)'
         }}>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
@@ -125,7 +139,7 @@ export function Login() {
             >
               {loading ? (
                 <>
-                  <div className="spinner" style={{ width: 16, height: 16 }} />
+                  <div className="spinner" style={{ width: 16, height: 16, borderTopColor: '#fff' }} />
                   Authenticating...
                 </>
               ) : 'Sign In'}
@@ -133,9 +147,24 @@ export function Login() {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'var(--text-muted)' }}>
-          BFI Finance · Fraud Detection System · {new Date().getFullYear()}
-        </p>
+        {/* Branding Footer */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          marginTop: 24,
+          opacity: 0.8
+        }}>
+          <img 
+            src={protectLogo} 
+            alt="ProtectQube Logo" 
+            style={{ height: 13, objectFit: 'contain' }} 
+          />
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>
+            VoiceGuard by ProtectQube · {new Date().getFullYear()}
+          </span>
+        </div>
       </div>
     </div>
   )

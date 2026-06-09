@@ -9,7 +9,7 @@ const client = axios.create({
 
 // Inject auth token on every request
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('bfi_token')
+  const token = localStorage.getItem('voiceguard_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -21,7 +21,7 @@ client.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('bfi_token')
+      localStorage.removeItem('voiceguard_token')
       window.location.href = '/login'
     }
     return Promise.reject(error)

@@ -1,8 +1,8 @@
-# BFI Finance Voice Fraud Detection — Architecture
+# VoiceGuard Voice Fraud Detection — Architecture
 
 ## Overview
 
-Real-time voice fraud detection system for BFI Finance store monitoring. Continuously listens via microphone, transcribes speech with STT, classifies for fraud with LLM, records pre/post-event audio clips, and broadcasts alerts via WebSocket UI and MQTT.
+Real-time voice fraud detection system by ProtectQube. Continuously listens via microphone, transcribes speech with STT, classifies for fraud with LLM, records pre/post-event audio clips, and broadcasts alerts via WebSocket UI and MQTT.
 
 ---
 
@@ -77,7 +77,7 @@ Real-time voice fraud detection system for BFI Finance store monitoring. Continu
 ## Directory Structure
 
 ```
-bfi-fraud-detection/
+voiceguard-fraud-detection/
 ├── ARCHITECTURE.md           ← This file
 ├── docker-compose.yml        ← Orchestration
 ├── .env.example              ← Environment template
@@ -208,7 +208,7 @@ Main Thread (FastAPI/uvicorn)
   "flags": ["payment_diversion", "personal_contact"],
   "transcript": "...",
   "timestamp": "2025-01-15T10:30:00Z",
-  "device_name": "BFI-Store-01",
+  "device_name": "VoiceGuard-Store-01",
   "session_id": 7
 }
 ```
@@ -225,7 +225,7 @@ Main Thread (FastAPI/uvicorn)
 
 ```bash
 # OrangePi 5 Pro (Ubuntu/Debian ARM64)
-git clone <repo> && cd bfi-fraud-detection
+git clone <repo> && cd voiceguard-fraud-detection
 cp .env.example .env
 # Edit .env with your Groq API key, MQTT config, etc.
 docker-compose up -d

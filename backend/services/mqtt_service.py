@@ -28,7 +28,7 @@ class MQTTService:
         try:
             import paho.mqtt.client as mqtt
 
-            client_id = self._rc.get("mqtt_client_id", "bfi-fraud-detector")
+            client_id = self._rc.get("mqtt_client_id", "voiceguard-fraud-detector")
             self._client = mqtt.Client(
                 client_id=client_id,
                 protocol=mqtt.MQTTv5,
@@ -68,7 +68,7 @@ class MQTTService:
             logger.warning("[MQTT] Not connected, skipping publish")
             return False
 
-        topic = self._rc.get("mqtt_topic", "bfi/fraud/alerts")
+        topic = self._rc.get("mqtt_topic", "voiceguard/fraud/alerts")
         qos = int(self._rc.get("mqtt_qos", 1))
         retain = bool(self._rc.get("mqtt_retain", False))
 
