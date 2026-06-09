@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import voiceguardLogo from '../assets/voiceguard.png'
 import protectqubeLogo from '../assets/protectqube.png'
-import protectqubedLogo from '../assets/protectqubed.png'
 
 export function Login() {
   const [username, setUsername] = useState('')
@@ -28,7 +27,6 @@ export function Login() {
   }
 
   const isDark = (localStorage.getItem('theme') || 'dark') === 'dark'
-  const protectLogo = isDark ? protectqubedLogo : protectqubeLogo
 
   return (
     <div style={{
@@ -157,9 +155,13 @@ export function Login() {
           opacity: 0.8
         }}>
           <img 
-            src={protectLogo} 
+            src={protectqubeLogo} 
             alt="ProtectQube Logo" 
-            style={{ height: 13, objectFit: 'contain' }} 
+            style={{ 
+              height: 13, 
+              objectFit: 'contain',
+              filter: isDark ? 'brightness(0) invert(1) opacity(0.85)' : 'none'
+            }} 
           />
           <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>
             VoiceGuard by ProtectQube · {new Date().getFullYear()}

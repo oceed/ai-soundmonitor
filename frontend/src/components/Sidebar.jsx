@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.jsx'
 import voiceguardLogo from '../assets/voiceguard.png'
 import protectqubeLogo from '../assets/protectqube.png'
-import protectqubedLogo from '../assets/protectqubed.png'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '⬡', exact: true },
@@ -145,9 +144,13 @@ export function Sidebar({ pipelineRunning, wsStatus, theme, toggleTheme }) {
           opacity: 0.75,
         }}>
           <img 
-            src={theme === 'dark' ? protectqubedLogo : protectqubeLogo} 
+            src={protectqubeLogo} 
             alt="ProtectQube Logo" 
-            style={{ height: 12, objectFit: 'contain' }} 
+            style={{ 
+              height: 12, 
+              objectFit: 'contain',
+              filter: theme === 'dark' ? 'brightness(0) invert(1) opacity(0.85)' : 'none'
+            }} 
           />
           <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>
             Secured by ProtectQube

@@ -2,11 +2,19 @@ import { useMemo, useRef } from 'react'
 import { format } from 'date-fns'
 
 const VERDICT_COLORS = {
-  FRAUD: 'var(--fraud)',
+  FRAUD:      'var(--fraud)',
   SUSPICIOUS: 'var(--suspicious)',
-  NORMAL: 'var(--clear)',
-  CLEAR: 'var(--clear)',
-  ERROR: 'var(--error)',
+  NORMAL:     'var(--clear)',
+  CLEAR:      'var(--clear)',
+  ERROR:      'var(--error)',
+}
+
+const VERDICT_BG = {
+  FRAUD:      'var(--fraud-bg)',
+  SUSPICIOUS: 'var(--suspicious-bg)',
+  NORMAL:     'var(--clear-bg)',
+  CLEAR:      'var(--clear-bg)',
+  ERROR:      'rgba(240,82,82,0.08)',
 }
 
 export function Timeline({
@@ -20,60 +28,52 @@ export function Timeline({
 }) {
   const trackRef = useRef(null)
 
-  // Map segment/alert timestamp to position (0..1) across 24h
   const markers = useMemo(() => {
     return alerts
       .filter(a => a.timestamp)
       .map(a => {
         const ts = new Date(a.timestamp)
         const secondsInDay = ts.getHours() * 3600 + ts.getMinutes() * 60 + ts.getSeconds()
-        const position = secondsInDay / 86400
-        return { ...a, position }
+        return { ...a, position: secondsInDay / 86400 }
       })
   }, [alerts])
 
   const continuousRanges = useMemo(() => {
     return (continuousRecordings || []).map(c => {
       const startTs = new Date(c.start_time)
-      const endTs = new Date(c.end_time)
+      const endTs   = new Date(c.end_time)
       const startSec = startTs.getHours() * 3600 + startTs.getMinutes() * 60 + startTs.getSeconds()
-      const endSec = endTs.getHours() * 3600 + endTs.getMinutes() * 60 + endTs.getSeconds()
-      
-      const left = startSec / 86400
-      const width = (endSec - startSec) / 86400
-      
+      const endSec   = endTs.getHours()   * 3600 + endTs.getMinutes()   * 60 + endTs.getSeconds()
       return {
         ...c,
-        left,
-        width,
+        left:  startSec / 86400,
+        width: (endSec - startSec) / 86400,
       }
     })
   }, [continuousRecordings])
 
   const handleTrackClick = (e) => {
     if (!trackRef.current) return
-    const rect = trackRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const ratio = Math.max(0, Math.min(1, x / rect.width))
+    const rect  = trackRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     onTrackClick?.(ratio)
   }
 
   const getTimeLabel = (ratio) => {
     if (ratio === null) return ''
-    const totalSeconds = Math.round(ratio * 86400)
-    const h = Math.floor(totalSeconds / 3600)
-    const m = Math.floor((totalSeconds % 3600) / 60)
-    const s = Math.floor(totalSeconds % 60)
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    const s = Math.round(ratio * 86400)
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sc = s % 60
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sc).padStart(2,'0')}`
   }
 
-  // Hour ticks
   const hourTicks = Array.from({ length: 25 }, (_, i) => i)
 
   return (
     <div style={{ userSelect: 'none' }}>
       {/* Hour labels */}
-      <div style={{ position: 'relative', height: 20, marginBottom: 4 }}>
+      <div style={{ position: 'relative', height: 18, marginBottom: 6 }}>
         {[0, 6, 12, 18, 24].map(h => (
           <div key={h} style={{
             position: 'absolute',
@@ -82,6 +82,7 @@ export function Timeline({
             fontSize: 10,
             color: 'var(--text-muted)',
             fontFamily: 'var(--font-mono)',
+            fontWeight: 500,
           }}>
             {String(h).padStart(2, '0')}:00
           </div>
@@ -94,98 +95,125 @@ export function Timeline({
         onClick={handleTrackClick}
         style={{
           position: 'relative',
-          height: 56,
-          background: 'var(--bg-surface)',
+          height: 52,
+          background: 'var(--bg-elevated)',
           border: '1px solid var(--border)',
           borderRadius: 8,
           cursor: 'crosshair',
-          overflow: 'hidden',
+          overflow: 'visible',
         }}
       >
-        {/* Hour grid */}
-        {hourTicks.map(h => (
-          <div key={h} style={{
-            position: 'absolute',
-            left: `${(h / 24) * 100}%`,
-            top: 0, bottom: 0,
-            width: 1,
-            background: h % 6 === 0 ? 'rgba(99, 130, 255, 0.15)' : 'rgba(99, 130, 255, 0.04)',
-            zIndex: 2,
-          }} />
-        ))}
+        {/* Hour grid lines (inside) */}
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 8, overflow: 'hidden', pointerEvents: 'none' }}>
+          {hourTicks.map(h => (
+            <div key={h} style={{
+              position: 'absolute',
+              left: `${(h / 24) * 100}%`,
+              top: 0, bottom: 0,
+              width: 1,
+              background: h % 6 === 0
+                ? 'rgba(139,148,194,0.12)'
+                : 'rgba(139,148,194,0.04)',
+            }} />
+          ))}
 
-        {/* Continuous recordings background ranges */}
+          {/* Continuous recordings — subtle fill strips */}
+          {continuousRanges.map(range => (
+            <div
+              key={range.id}
+              style={{
+                position: 'absolute',
+                left: `${range.left * 100}%`,
+                width: `max(${range.width * 100}%, 0.4%)`,
+                top: 0, bottom: 0,
+                background: 'rgba(124, 106, 247, 0.08)',
+                borderLeft:  '1px solid rgba(124, 106, 247, 0.25)',
+                borderRight: '1px solid rgba(124, 106, 247, 0.15)',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Continuous recording click targets — invisible wide hit zone */}
         {continuousRanges.map(range => (
           <div
-            key={range.id}
+            key={`hit-${range.id}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              // Calculate click offset within this range
+              const rect  = trackRef.current?.getBoundingClientRect()
+              if (!rect) return
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+              onTrackClick?.(ratio)
+            }}
             style={{
               position: 'absolute',
-              left: `${range.left * 100}%`,
-              width: `${range.width * 100}%`,
+              left: `max(${range.left * 100}%, 0px)`,
+              width: `max(${range.width * 100}%, 1.5%)`,
               top: 0, bottom: 0,
-              background: 'rgba(255, 120, 0, 0.12)',
-              borderLeft: '1px solid rgba(255, 120, 0, 0.2)',
-              borderRight: '1px solid rgba(255, 120, 0, 0.2)',
-              pointerEvents: 'none',
-              zIndex: 1,
+              cursor: 'pointer',
+              zIndex: 3,
             }}
           />
         ))}
 
-        {/* Segment / Alert markers */}
+        {/* Segment markers — wide invisible hit area per marker */}
         {markers.map(marker => {
           const isSelected = selectedSegmentId
             ? marker.segment_id === selectedSegmentId
             : (marker.alert_id && marker.alert_id === selectedAlertId)
-          const isNormal = marker.verdict === 'NORMAL' || marker.verdict === 'CLEAR'
-          
+          const isNormal   = marker.verdict === 'NORMAL' || marker.verdict === 'CLEAR'
+          const color      = VERDICT_COLORS[marker.verdict] || 'var(--text-muted)'
+          const dotSize    = isSelected ? 13 : (isNormal ? 7 : 10)
+
           return (
             <div
               key={marker.segment_id || marker.alert_id}
+              className="timeline-marker-hit-area"
+              style={{ left: `${marker.position * 100}%` }}
               onClick={(e) => { e.stopPropagation(); onAlertClick?.(marker) }}
               title={`${format(new Date(marker.timestamp), 'HH:mm:ss')} — ${marker.verdict} (${marker.confidence}%)\n"${marker.transcript || ''}"`}
-              style={{
-                position: 'absolute',
-                left: `${marker.position * 100}%`,
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: isSelected ? 14 : (isNormal ? 8 : 10),
-                height: isSelected ? 14 : (isNormal ? 8 : 10),
+            >
+              {/* Visual dot */}
+              <div style={{
+                width:        dotSize,
+                height:       dotSize,
                 borderRadius: '50%',
-                background: VERDICT_COLORS[marker.verdict] || 'var(--clear)',
-                border: `2px solid ${isSelected ? '#fff' : 'transparent'}`,
-                boxShadow: `0 0 ${isSelected ? 12 : (isNormal ? 4 : 6)}px ${VERDICT_COLORS[marker.verdict] || 'var(--clear)'}`,
-                cursor: 'pointer',
-                zIndex: isSelected ? 10 : 5,
-                transition: 'all var(--t-fast)',
-              }}
-            />
+                background:   color,
+                border:       `2px solid ${isSelected ? '#fff' : 'transparent'}`,
+                boxShadow:    `0 0 ${isSelected ? 10 : (isNormal ? 3 : 6)}px ${color}`,
+                transition:   'all var(--t-fast)',
+                flexShrink:   0,
+              }} />
+            </div>
           )
         })}
 
-        {/* Live Playback head */}
+        {/* Playback head */}
         {currentPlayRatio !== null && (
           <div style={{
             position: 'absolute',
-            left: `${currentPlayRatio * 100}%`,
+            left:     `${currentPlayRatio * 100}%`,
             top: 0, bottom: 0,
             width: 2,
-            background: 'var(--accent)',
+            background: 'var(--accent-light)',
             zIndex: 8,
-            boxShadow: '0 0 8px var(--accent)',
+            boxShadow: '0 0 6px var(--accent)',
             pointerEvents: 'none',
           }}>
             <div style={{
               position: 'absolute',
-              top: -20, left: '50%',
+              bottom: '100%',
+              left: '50%',
               transform: 'translateX(-50%)',
               background: 'var(--accent)',
               color: '#fff',
-              fontSize: 10,
+              fontSize: 9,
               padding: '2px 5px',
               borderRadius: 3,
               fontFamily: 'var(--font-mono)',
               whiteSpace: 'nowrap',
+              marginBottom: 4,
             }}>
               {getTimeLabel(currentPlayRatio)}
             </div>
@@ -194,22 +222,27 @@ export function Timeline({
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 11, color: 'var(--text-muted)', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--fraud)', boxShadow: '0 0 4px var(--fraud)' }} />
-          Fraud
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--suspicious)', boxShadow: '0 0 4px var(--suspicious)' }} />
-          Suspicious
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--fraud)' }} />
+          <span>Fraud</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--clear)', boxShadow: '0 0 4px var(--clear)' }} />
-          Clear / Normal
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--suspicious)' }} />
+          <span>Suspicious</span>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
-          {markers.length} event{markers.length !== 1 ? 's' : ''} recorded
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--clear)' }} />
+          <span>Clear</span>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 20, height: 6, borderRadius: 3, background: 'rgba(124,106,247,0.25)', border: '1px solid rgba(124,106,247,0.35)' }} />
+          <span>Continuous</span>
+        </div>
+        <span style={{ marginLeft: 'auto' }}>
+          {markers.length} event{markers.length !== 1 ? 's' : ''}
+          {continuousRecordings.length > 0 && ` · ${continuousRecordings.length} recording chunk${continuousRecordings.length !== 1 ? 's' : ''}`}
+        </span>
       </div>
     </div>
   )

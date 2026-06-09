@@ -329,7 +329,7 @@ export function Playback() {
               <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                 <div style={{ fontSize: 3 + 'rem', opacity: 0.2 }}>▶</div>
                 <div style={{ color: 'var(--text-secondary)', fontSize: 14, fontWeight: 500 }}>Select an event or time to play</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Click on the continuous orange areas in the timeline or select a specific event from the list.</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Click on the continuous violet areas in the timeline or select a specific event from the list.</div>
               </div>
             )}
           </div>
