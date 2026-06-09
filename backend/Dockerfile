@@ -7,6 +7,7 @@ FROM python:3.11-slim
 
 # System dependencies for PyAudio (ALSA) + audio encoding
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     portaudio19-dev \
     libasound2-dev \
     alsa-utils \
