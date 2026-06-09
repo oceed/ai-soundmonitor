@@ -126,9 +126,9 @@ export function Timeline({
                 left: `${range.left * 100}%`,
                 width: `max(${range.width * 100}%, 0.4%)`,
                 top: 0, bottom: 0,
-                background: 'rgba(124, 106, 247, 0.08)',
-                borderLeft:  '1px solid rgba(124, 106, 247, 0.25)',
-                borderRight: '1px solid rgba(124, 106, 247, 0.15)',
+                background: 'var(--accent-glow)',
+                borderLeft:  '1px solid rgba(255, 122, 0, 0.24)',
+                borderRight: '1px solid rgba(255, 122, 0, 0.12)',
               }}
             />
           ))}
@@ -236,7 +236,7 @@ export function Timeline({
           <span>Clear</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{ width: 20, height: 6, borderRadius: 3, background: 'rgba(124,106,247,0.25)', border: '1px solid rgba(124,106,247,0.35)' }} />
+          <div style={{ width: 20, height: 6, borderRadius: 3, background: 'var(--accent-glow)', border: '1px solid rgba(255, 122, 0, 0.35)' }} />
           <span>Continuous</span>
         </div>
         <span style={{ marginLeft: 'auto' }}>
