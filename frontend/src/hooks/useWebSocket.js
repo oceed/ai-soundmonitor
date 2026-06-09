@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const WS_URL = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:8001`
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS_URL = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`
 const RECONNECT_DELAY_MS = 3000
 const MAX_RECONNECT = 10
 
