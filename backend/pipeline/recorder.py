@@ -1,0 +1,259 @@
+"""
+recorder.py — Pre/post buffer audio recording.
+
+Design:
+  - RingBuffer: circular in-memory PCM buffer (pre-buffer)
+  - When fraud detected, extract pre_buffer_s from ring + wait post_buffer_s
+  - Save combined audio to OGG or WAV
+  - Thread-safe
+"""
+
+from __future__ import annotations
+
+import io
+import logging
+import os
+import threading
+import time
+import wave
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────
+# Ring Buffer (circular PCM store)
+# ─────────────────────────────────────────────────────────
+
+class RingBuffer:
+    """
+    Thread-safe circular PCM audio buffer with timestamps.
+    Stores up to `max_seconds` of audio, dropping oldest.
+    """
+
+    def __init__(self, max_seconds: float, sample_rate: int = 16000, channels: int = 1):
+        self._max_samples = int(max_seconds * sample_rate * channels)
+        self._sample_rate = sample_rate
+        self._channels = channels
+        self._buffer: deque[Tuple[float, bytes]] = deque()
+        self._total_samples = 0
+        self._lock = threading.Lock()
+
+    def push(self, chunk: bytes, timestamp: float) -> None:
+        samples = len(chunk) // 2  # 16-bit → 2 bytes per sample
+        with self._lock:
+            self._buffer.append((timestamp, chunk))
+            self._total_samples += samples
+            # Trim oldest
+            while self._total_samples > self._max_samples and self._buffer:
+                _, old_chunk = self._buffer.popleft()
+                self._total_samples -= len(old_chunk) // 2
+
+    def get_since(self, since_timestamp: float) -> bytes:
+        with self._lock:
+            chunks = [chunk for ts, chunk in self._buffer if ts >= since_timestamp]
+            return b"".join(chunks)
+
+    def get_last_n_seconds(self, n_seconds: float) -> bytes:
+        cutoff = time.monotonic() - n_seconds
+        return self.get_since(cutoff)
+
+    def snapshot(self) -> bytes:
+        """Get all buffered audio."""
+        with self._lock:
+            return b"".join(chunk for _, chunk in self._buffer)
+
+
+# ─────────────────────────────────────────────────────────
+# Recorder
+# ─────────────────────────────────────────────────────────
+
+class Recorder:
+    """
+    Manages pre/post buffer recording.
+
+    Usage:
+      1. Call push_chunk() continuously from audio capture thread.
+      2. Call start_alert_recording(alert_id, pre_s) when fraud detected.
+      3. Recorder keeps collecting for post_s more seconds.
+      4. Call get_recording_path(alert_id) to get the saved file path.
+    """
+
+    def __init__(
+        self,
+        recordings_dir: Path,
+        pre_buffer_s: float = 10.0,
+        post_buffer_s: float = 15.0,
+        recording_format: str = "ogg",
+        sample_rate: int = 16000,
+        channels: int = 1,
+    ):
+        self._recordings_dir = recordings_dir
+        self._pre_buffer_s = pre_buffer_s
+        self._post_buffer_s = post_buffer_s
+        self._format = recording_format
+        self._sample_rate = sample_rate
+        self._channels = channels
+
+        # Ring buffer — store pre_buffer_s + some margin
+        self._ring = RingBuffer(
+            max_seconds=pre_buffer_s + 5.0,
+            sample_rate=sample_rate,
+            channels=channels,
+        )
+
+        # Active recordings: {alert_id: {"start_ts": float, "post_chunks": list, "done": bool}}
+        self._active: dict[int, dict] = {}
+        self._lock = threading.Lock()
+
+        recordings_dir.mkdir(parents=True, exist_ok=True)
+
+    def push_chunk(self, chunk: bytes, timestamp: Optional[float] = None) -> None:
+        """Call this for every audio chunk from the capture thread."""
+        ts = timestamp if timestamp is not None else time.monotonic()
+        self._ring.push(chunk, ts)
+
+        # Feed active post-buffer recordings
+        with self._lock:
+            now = time.monotonic()
+            for alert_id, rec in list(self._active.items()):
+                if rec["done"]:
+                    continue
+                elapsed_post = now - rec["start_ts"]
+                if elapsed_post <= rec["post_s"]:
+                    rec["post_chunks"].append(chunk)
+                else:
+                    # Post buffer complete — save file
+                    rec["done"] = True
+                    threading.Thread(
+                        target=self._save_recording,
+                        args=(alert_id, rec),
+                        daemon=True,
+                    ).start()
+
+    def start_alert_recording(
+        self,
+        alert_id: int,
+        verdict: str,
+        segment_timestamp: datetime,
+        pre_s: Optional[float] = None,
+        post_s: Optional[float] = None,
+    ) -> None:
+        """
+        Trigger a recording for the given alert.
+        Pre-buffer is extracted from ring buffer immediately.
+        Post-buffer continues collecting for post_s seconds.
+        """
+        pre_s = pre_s if pre_s is not None else self._pre_buffer_s
+        post_s = post_s if post_s is not None else self._post_buffer_s
+
+        # Extract pre-buffer now
+        pre_pcm = self._ring.get_last_n_seconds(pre_s)
+
+        with self._lock:
+            self._active[alert_id] = {
+                "start_ts": time.monotonic(),
+                "pre_pcm": pre_pcm,
+                "post_chunks": [],
+                "post_s": post_s,
+                "verdict": verdict,
+                "segment_timestamp": segment_timestamp,
+                "pre_s": pre_s,
+                "done": False,
+                "saved_path": None,
+            }
+
+        logger.info(f"[Recorder] Alert {alert_id} recording started (pre={pre_s}s, post={post_s}s)")
+
+    def _save_recording(self, alert_id: int, rec: dict) -> None:
+        try:
+            # Combine pre + post
+            all_pcm = rec["pre_pcm"] + b"".join(rec["post_chunks"])
+            if not all_pcm:
+                logger.warning(f"[Recorder] Alert {alert_id}: no audio data")
+                return
+
+            ts = rec["segment_timestamp"]
+            date_dir = self._recordings_dir / ts.strftime("%Y-%m-%d")
+            date_dir.mkdir(parents=True, exist_ok=True)
+
+            verdict_short = rec["verdict"].replace("FRAUD_", "F_")
+            filename = f"{ts.strftime('%H-%M-%S')}_{verdict_short}_{alert_id}.{self._format}"
+            filepath = date_dir / filename
+
+            if self._format == "ogg":
+                self._save_ogg(all_pcm, filepath)
+            else:
+                self._save_wav(all_pcm, filepath)
+
+            duration_s = len(all_pcm) / (self._sample_rate * 2 * self._channels)
+            logger.info(
+                f"[Recorder] Alert {alert_id}: saved {filepath.name} "
+                f"({duration_s:.1f}s, {len(all_pcm)//1024}KB)"
+            )
+
+            with self._lock:
+                if alert_id in self._active:
+                    self._active[alert_id]["saved_path"] = str(filepath)
+                    self._active[alert_id]["duration_s"] = duration_s
+
+        except Exception as e:
+            logger.error(f"[Recorder] Failed to save alert {alert_id}: {e}")
+
+    def _save_wav(self, pcm: bytes, path: Path) -> None:
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(self._channels)
+            wf.setsampwidth(2)
+            wf.setframerate(self._sample_rate)
+            wf.writeframes(pcm)
+
+    def _save_ogg(self, pcm: bytes, path: Path) -> None:
+        import soundfile as sf
+        arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        sf.write(str(path), arr, self._sample_rate, format="OGG", subtype="VORBIS")
+
+    def get_recording_info(self, alert_id: int) -> Optional[dict]:
+        """Returns dict with saved_path and duration_s once recording is done."""
+        with self._lock:
+            rec = self._active.get(alert_id)
+            if rec and rec["done"] and rec.get("saved_path"):
+                return {
+                    "path": rec["saved_path"],
+                    "duration_s": rec.get("duration_s", 0.0),
+                    "filename": Path(rec["saved_path"]).name,
+                }
+        return None
+
+    def wait_for_recording(self, alert_id: int, timeout: float = 60.0) -> Optional[dict]:
+        """Block until recording is saved or timeout."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            info = self.get_recording_info(alert_id)
+            if info:
+                return info
+            time.sleep(0.5)
+        return None
+
+    def cleanup_old(self, alert_id: int) -> None:
+        with self._lock:
+            self._active.pop(alert_id, None)
+
+    def update_config(
+        self,
+        pre_buffer_s: Optional[float] = None,
+        post_buffer_s: Optional[float] = None,
+    ) -> None:
+        if pre_buffer_s is not None:
+            self._pre_buffer_s = pre_buffer_s
+            self._ring = RingBuffer(
+                max_seconds=pre_buffer_s + 5.0,
+                sample_rate=self._sample_rate,
+                channels=self._channels,
+            )
+        if post_buffer_s is not None:
+            self._post_buffer_s = post_buffer_s

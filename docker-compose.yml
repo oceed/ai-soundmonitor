@@ -1,0 +1,77 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────
+# BFI Fraud Detection — Docker Compose
+# Target: OrangePi 5 Pro (ARM64, Ubuntu/Debian)
+# ─────────────────────────────────────────────────────────
+
+services:
+  # ── Backend ───────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bfi-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - STORAGE_PATH=/app/storage
+      - DATABASE_PATH=/app/storage/fraud_detection.db
+    volumes:
+      - ./storage:/app/storage
+    ports:
+      - "${BACKEND_PORT:-8001}:8001"
+    # Audio device passthrough for microphone access
+    devices:
+      - /dev/snd:/dev/snd
+    # Required for ALSA audio access
+    group_add:
+      - audio
+    # Host network allows access to Ollama/RKLLama on host
+    # Remove if using MQTT broker also in Docker
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8001
+        - VITE_WS_URL=ws://localhost:8001
+    container_name: bfi-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Use host network so Nginx can proxy to backend on same host
+    network_mode: host
+
+# ─────────────────────────────────────────────────────────
+# NOTE: Ollama / RKLLama should be installed natively on
+# OrangePi for NPU/GPU acceleration. Configure LOCAL_LLM_URL
+# in .env to point to the host instance.
+#
+# To also containerize Ollama (CPU-only, slower):
+#   ollama:
+#     image: ollama/ollama:latest
+#     container_name: bfi-ollama
+#     restart: unless-stopped
+#     ports:
+#       - "11434:11434"
+#     volumes:
+#       - ollama_data:/root/.ollama
+#
+# volumes:
+#   ollama_data:
+# ─────────────────────────────────────────────────────────

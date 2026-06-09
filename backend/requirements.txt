@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────
+# Backend Python Dependencies
+# Pinned for reproducible ARM64 builds
+# ─────────────────────────────────────────────────────────
+
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+websockets==12.0
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database
+sqlalchemy==2.0.30
+aiosqlite==0.20.0
+
+# Settings
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# Audio capture
+pyaudio==0.2.14
+
+# Audio processing / encoding
+soundfile==0.12.1
+numpy==1.26.4
+
+# STT — local (faster-whisper works on ARM64 CPU)
+faster-whisper==1.0.3
+
+# STT / LLM — Groq API
+groq==0.9.0
+
+# HTTP client for local LLM & audio upload
+httpx==0.27.0
+requests==2.32.3
+
+# MQTT
+paho-mqtt==2.0.0
+
+# Scheduler (retention cleanup)
+apscheduler==3.10.4
+
+# Utilities
+orjson==3.10.3
+python-dateutil==2.9.0
