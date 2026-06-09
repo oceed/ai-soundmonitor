@@ -281,6 +281,7 @@ class AudioCapture:
         fps = self._sample_rate // self._chunk_size
         speech_frames: List[bytes] = []
         silence_frames = 0
+        consecutive_speech_frames = 0
         is_recording = False
         last_vad_state = "silence"
 
@@ -336,15 +337,19 @@ class AudioCapture:
                 is_speech = vad.is_speech(data)
 
                 if is_speech:
-                    vad_state = "speech"
+                    consecutive_speech_frames += 1
                     if not is_recording:
-                        is_recording = True
-                        speech_frames = []
+                        # Require at least 2 consecutive speech frames (approx 64ms) to debounce noise spikes
+                        if consecutive_speech_frames >= 2:
+                            is_recording = True
+                            speech_frames = [data]
+                            silence_frames = 0
+                            logger.debug("[VAD] Speech started")
+                    else:
+                        speech_frames.append(data)
                         silence_frames = 0
-                        logger.debug("[VAD] Speech started")
-                    speech_frames.append(data)
-                    silence_frames = 0
                 else:
+                    consecutive_speech_frames = 0
                     if is_recording:
                         silence_frames += 1
                         speech_frames.append(data)
@@ -353,7 +358,6 @@ class AudioCapture:
                             speech_frames = []
                             silence_frames = 0
                             is_recording = False
-                    vad_state = "silence"
 
                 # Max segment length
                 if is_recording and len(speech_frames) >= max_frames:
@@ -361,7 +365,9 @@ class AudioCapture:
                     speech_frames = []
                     silence_frames = 0
                     is_recording = False
-                    vad_state = "silence"
+
+                # Smoothed VAD state for the UI is tied to whether we are actively recording a segment
+                vad_state = "speech" if is_recording else "silence"
 
                 if vad_state != last_vad_state and self._vad_state_cb:
                     self._vad_state_cb(vad_state, rms)
