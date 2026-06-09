@@ -152,6 +152,43 @@ class PipelineOrchestrator:
         self._emit("pipeline_status", {"running": False, "session_id": self._session_id})
         logger.info("[Orchestrator] Pipeline stopped")
 
+    def reload_config(self) -> None:
+        """Dynamically updates running services with the latest config from runtime_config."""
+        logger.info("[Orchestrator] Dynamic configuration reload triggered")
+        with self._lock:
+            # 1. Reinitialize STT/LLM dynamically with new modes or settings
+            self._init_stt()
+            self._init_llm()
+
+            # 2. Update Recorder dynamically
+            if self._recorder:
+                self._recorder.update_params(
+                    pre_buffer_s=self._rc.get("pre_buffer_seconds", self._settings.pre_buffer_seconds),
+                    post_buffer_s=self._rc.get("post_buffer_seconds", self._settings.post_buffer_seconds),
+                    continuous_enabled=self._rc.get("continuous_recording_enabled", False),
+                    continuous_chunk_minutes=self._rc.get("continuous_chunk_minutes", 10),
+                )
+
+            # 3. Update AudioCapture or restart it if the audio device index changed
+            if self._capture:
+                current_device = self._capture._device_index
+                new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
+
+                if current_device != new_device:
+                    logger.info(f"[Orchestrator] Audio device index changed from {current_device} to {new_device}. Restarting audio capture...")
+                    self._capture.stop()
+                    self._init_capture()
+                    self._capture.start()
+                else:
+                    self._capture.update_vad_params(
+                        threshold=self._rc.get("vad_threshold", self._settings.vad_threshold),
+                        silence_duration=self._rc.get("vad_silence_duration", self._settings.vad_silence_duration),
+                        min_speech_duration=self._rc.get("vad_min_speech_duration", self._settings.vad_min_speech_duration),
+                        max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
+                        use_silero=self._rc.get("vad_use_silero", False),
+                        auto_calibrate=self._rc.get("vad_auto_calibrate", True),
+                    )
+
     @property
     def is_running(self) -> bool:
         return self._running

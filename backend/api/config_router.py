@@ -79,6 +79,15 @@ async def patch_config(
     # Update in-memory cache
     runtime_config.update(updates)
 
+    # Trigger dynamic hot reload in running orchestrator
+    try:
+        from main import get_orchestrator
+        orchestrator = get_orchestrator()
+        if orchestrator:
+            orchestrator.reload_config()
+    except Exception as e:
+        pass
+
     return {"message": "Config updated", "keys": list(updates.keys())}
 
 
@@ -113,6 +122,16 @@ async def update_prompt(
 
     await db.commit()
     runtime_config.set("system_prompt", body.system_prompt)
+
+    # Trigger dynamic hot reload in running orchestrator
+    try:
+        from main import get_orchestrator
+        orchestrator = get_orchestrator()
+        if orchestrator:
+            orchestrator.reload_config()
+    except Exception as e:
+        pass
+
     return {"message": "System prompt updated"}
 
 
@@ -121,10 +140,23 @@ async def reset_config(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Delete all runtime config from DB (reverts to defaults on next restart)."""
+    """Delete all runtime config from DB and reset cache (reverts to defaults)."""
     result = await db.execute(select(ConfigEntry))
     entries = result.scalars().all()
     for e in entries:
         await db.delete(e)
     await db.commit()
-    return {"message": f"Deleted {len(entries)} config entries. Defaults will apply on restart."}
+
+    # Reset cache in memory
+    runtime_config.reset()
+
+    # Trigger dynamic hot reload in running orchestrator to apply defaults immediately
+    try:
+        from main import get_orchestrator
+        orchestrator = get_orchestrator()
+        if orchestrator:
+            orchestrator.reload_config()
+    except Exception as e:
+        pass
+
+    return {"message": f"Deleted {len(entries)} config entries. Defaults applied immediately."}

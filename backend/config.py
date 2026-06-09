@@ -240,9 +240,15 @@ class RuntimeConfig:
         with self._lock:
             self._data.update(updates)
 
+    def reset(self) -> None:
+        with self._lock:
+            self._data = dict(_DEFAULT_RUNTIME_CONFIG)
+
     def load_from_db_rows(self, rows: list) -> None:
         """Hydrate from DB config rows: [(key, value_json), ...]"""
         with self._lock:
+            # Revert to default first
+            self.reset()
             for key, value_json in rows:
                 try:
                     self._data[key] = json.loads(value_json)

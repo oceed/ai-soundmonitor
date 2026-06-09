@@ -133,6 +133,37 @@ class Recorder:
         with self._lock:
             self._session_id = session_id
 
+    def update_params(
+        self,
+        pre_buffer_s: float,
+        post_buffer_s: float,
+        continuous_enabled: bool,
+        continuous_chunk_minutes: int,
+    ) -> None:
+        with self._lock:
+            self._pre_buffer_s = pre_buffer_s
+            self._post_buffer_s = post_buffer_s
+            self._continuous_chunk_minutes = continuous_chunk_minutes
+            
+            # Recreate RingBuffer if pre_buffer_s changed significantly
+            # We add 5.0 seconds as margin
+            self._ring = RingBuffer(
+                max_seconds=pre_buffer_s + 5.0,
+                sample_rate=self._sample_rate,
+                channels=self._channels,
+            )
+            
+            # Handle continuous recording toggling
+            if continuous_enabled != self._continuous_enabled:
+                self._continuous_enabled = continuous_enabled
+                if continuous_enabled:
+                    logger.info("[Recorder] Continuous recording dynamically enabled")
+                else:
+                    logger.info("[Recorder] Continuous recording dynamically disabled")
+                    if self._continuous_file:
+                        # Close and save the active continuous file
+                        self._rotate_continuous_file()
+
     def push_chunk(self, chunk: bytes, timestamp: Optional[float] = None) -> None:
         """Call this for every audio chunk from the capture thread."""
         ts = timestamp if timestamp is not None else time.monotonic()
