@@ -7,7 +7,7 @@ import { useToast } from '../components/NotificationToast'
 
 const TABS = ['General', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications', 'System Prompt', 'Security']
 
-export function Settings() {
+export function Settings({ liveDevices }) {
   const [activeTab, setActiveTab] = useState('General')
   const [config, setConfig] = useState({})
   const [prompt, setPrompt] = useState('')
@@ -34,6 +34,17 @@ export function Settings() {
   }, [])
 
   useEffect(() => { load() }, [])
+
+  // Auto-update device list when backend pushes a hotplug event via WebSocket
+  useEffect(() => {
+    if (liveDevices === null) return          // not yet received; keep initial REST data
+    setDevices(liveDevices)
+    addToast({
+      type: 'info',
+      title: 'Audio device change detected',
+      body: `${liveDevices.length} input device(s) connected.`,
+    })
+  }, [liveDevices]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -201,32 +212,49 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
   return (
     <>
       <div className="card" style={{ marginBottom: 16 }}>
-        <SettingRow label="Microphone Device" hint="Select the audio input device. -1 = auto-detect">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-            <select className="form-select" value={deviceIndex} onChange={e => setDeviceIndex(Number(e.target.value))} style={{ flex: 1 }}>
-              <option value={-1}>Auto-detect</option>
-              {devices.map(d => (
-                <option key={d.index} value={d.index}>{d.index}: {d.name}</option>
-              ))}
-            </select>
-            <button
-              className="btn btn-ghost"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Refresh device list"
-              style={{
-                padding: '0 12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 16,
-                flexShrink: 0
-              }}
-            >
-              {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '↻'}
-            </button>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>Microphone Device</span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 10, fontWeight: 600, letterSpacing: '0.05em',
+              padding: '2px 7px', borderRadius: 99,
+              background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+              border: '1px solid rgba(34,197,94,0.3)',
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', background: '#22c55e',
+                animation: 'pulse 2s infinite',
+              }} />
+              LIVE
+            </span>
           </div>
-        </SettingRow>
+          <div className="form-hint">Device list updates automatically when you plug or unplug a USB microphone.</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+          <select className="form-select" value={deviceIndex} onChange={e => setDeviceIndex(Number(e.target.value))} style={{ flex: 1 }}>
+            <option value={-1}>Auto-detect</option>
+            {devices.map(d => (
+              <option key={d.index} value={d.index}>{d.index}: {d.name}</option>
+            ))}
+          </select>
+          <button
+            className="btn btn-ghost"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh device list"
+            style={{
+              padding: '0 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              flexShrink: 0
+            }}
+          >
+            {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '↻'}
+          </button>
+        </div>
 
         <SettingRow label="VAD Mode" hint="Silero VAD uses a neural network to detect actual speech. Energy VAD uses volume (RMS) threshold.">
           <select className="form-select" value={useSilero ? 'silero' : 'energy'} onChange={e => {

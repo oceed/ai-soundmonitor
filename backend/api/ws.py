@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Set
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -129,3 +130,64 @@ async def rms_broadcast_task():
                 "rms": stats.get("rms", 0.0),
                 "vad_state": stats.get("vad_state", "silence"),
             })
+
+
+async def device_watcher_task():
+    """Background task: watch /dev/snd for USB hotplug events.
+
+    Polls the device node list every 2 seconds. When it detects that
+    audio devices have been added or removed (by comparing the set of
+    files in /dev/snd), it re-enumerates all PyAudio input devices and
+    broadcasts an 'audio_devices_changed' event to all WebSocket clients
+    so the frontend dropdown auto-updates without any user action.
+    """
+    from pipeline.audio_capture import AudioCapture
+
+    SND_DIR = "/dev/snd"
+    prev_nodes: set = set()
+
+    # Initialise with the current state so we don't fire on startup
+    try:
+        prev_nodes = set(os.listdir(SND_DIR))
+    except OSError:
+        pass
+
+    logger.info("[DeviceWatcher] Started — monitoring %s for USB audio hotplug", SND_DIR)
+
+    while True:
+        await asyncio.sleep(2)
+
+        if ws_manager.client_count == 0:
+            continue
+
+        try:
+            current_nodes = set(os.listdir(SND_DIR))
+        except OSError:
+            current_nodes = set()
+
+        if current_nodes == prev_nodes:
+            continue
+
+        added   = current_nodes - prev_nodes
+        removed = prev_nodes    - current_nodes
+        prev_nodes = current_nodes
+
+        logger.info(
+            "[DeviceWatcher] Audio device change detected — added: %s  removed: %s",
+            added, removed,
+        )
+
+        # Re-enumerate PyAudio devices (runs in executor so it won't block the event loop)
+        loop = asyncio.get_running_loop()
+        try:
+            devices = await loop.run_in_executor(None, AudioCapture.list_devices)
+        except Exception as exc:
+            logger.warning("[DeviceWatcher] list_devices failed: %s", exc)
+            devices = []
+
+        await ws_manager.broadcast({
+            "type": "audio_devices_changed",
+            "devices": devices,
+            "added_nodes": list(added),
+            "removed_nodes": list(removed),
+        })

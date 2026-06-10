@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from api.auth import hash_password, router as auth_router
-from api.ws import router as ws_router, ws_manager, rms_broadcast_task
+from api.ws import router as ws_router, ws_manager, rms_broadcast_task, device_watcher_task
 from api.alerts import router as alerts_router
 from api.recordings import router as recordings_router
 from api.config_router import router as config_router
@@ -106,8 +106,9 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     _orchestrator.start(loop)
 
-    # 6. Start RMS broadcast task
-    rms_task = asyncio.create_task(rms_broadcast_task())
+    # 6. Start background tasks
+    rms_task    = asyncio.create_task(rms_broadcast_task())
+    device_task = asyncio.create_task(device_watcher_task())
 
     # 7. Start retention scheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -131,6 +132,7 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ──────────────────────────────────────────
     logger.info("[Shutdown] Stopping services...")
     rms_task.cancel()
+    device_task.cancel()
     if _orchestrator:
         _orchestrator.stop()
     if _scheduler:

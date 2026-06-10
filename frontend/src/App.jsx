@@ -17,6 +17,7 @@ const MAX_EVENTS = 200
 function AppLayout() {
   const [liveEvents, setLiveEvents] = useState([])
   const [pipelineStatus, setPipelineStatus] = useState(null)
+  const [liveDevices, setLiveDevices] = useState(null) // null = not yet received via WS
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
 
   useEffect(() => {
@@ -33,6 +34,9 @@ function AppLayout() {
 
     if (msg.type === 'pipeline_status') {
       setPipelineStatus(prev => ({ ...(prev || {}), running: msg.running, stats: msg.stats }))
+    }
+    if (msg.type === 'audio_devices_changed') {
+      setLiveDevices(msg.devices || [])
     }
   }, [])
 
@@ -58,7 +62,7 @@ function AppLayout() {
           <Route path="/" element={<Dashboard liveEvents={liveEvents} pipelineStatus={pipelineStatus} />} />
           <Route path="/alerts" element={<Alerts liveEvents={liveEvents} />} />
           <Route path="/playback" element={<Playback />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<Settings liveDevices={liveDevices} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
