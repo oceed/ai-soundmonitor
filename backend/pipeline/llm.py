@@ -125,7 +125,7 @@ class GroqLLM:
             response = self._client.chat.completions.create(
                 model=self._model,
                 temperature=0,
-                max_completion_tokens=1024,
+                max_tokens=1024,
                 timeout=self._timeout,
                 messages=messages,
             )
