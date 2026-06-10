@@ -63,6 +63,40 @@ class RingBuffer:
         cutoff = time.monotonic() - n_seconds
         return self.get_since(cutoff)
 
+    def get_range(self, start_ts: float, end_ts: float) -> bytes:
+        with self._lock:
+            overlapping = []
+            first_start = None
+            for ts, chunk in self._buffer:
+                chunk_duration = len(chunk) / (self._sample_rate * 2 * self._channels)
+                chunk_start = ts - chunk_duration
+                if ts >= start_ts and chunk_start <= end_ts:
+                    if first_start is None:
+                        first_start = chunk_start
+                    overlapping.append(chunk)
+            
+            if not overlapping:
+                return b""
+            
+            all_pcm = b"".join(overlapping)
+            
+            # Trim prefix
+            if first_start < start_ts:
+                skip_bytes = int(round((start_ts - first_start) * self._sample_rate)) * 2 * self._channels
+                sample_bytes = 2 * self._channels
+                skip_bytes = (skip_bytes // sample_bytes) * sample_bytes
+                if skip_bytes > 0:
+                    all_pcm = all_pcm[skip_bytes:]
+            
+            # Trim suffix
+            expected_len = int(round((end_ts - start_ts) * self._sample_rate)) * 2 * self._channels
+            sample_bytes = 2 * self._channels
+            expected_len = (expected_len // sample_bytes) * sample_bytes
+            if len(all_pcm) > expected_len:
+                all_pcm = all_pcm[:expected_len]
+                
+            return all_pcm
+
     def snapshot(self) -> bytes:
         """Get all buffered audio."""
         with self._lock:
@@ -95,6 +129,7 @@ class Recorder:
         continuous_enabled: bool = False,
         continuous_chunk_minutes: int = 10,
         db_writer = None,
+        max_segment_duration: float = 15.0,
     ):
         self._recordings_dir = recordings_dir
         self._pre_buffer_s = pre_buffer_s
@@ -102,6 +137,7 @@ class Recorder:
         self._format = recording_format
         self._sample_rate = sample_rate
         self._channels = channels
+        self._max_segment_duration = max_segment_duration
 
         # Continuous recording settings
         self._continuous_enabled = continuous_enabled
@@ -116,9 +152,9 @@ class Recorder:
         self._continuous_samples = 0
         self._continuous_max_samples = 0
 
-        # Ring buffer — store pre_buffer_s + some margin
+        # Ring buffer — size dynamically to hold the max speech segment plus buffers and margin
         self._ring = RingBuffer(
-            max_seconds=pre_buffer_s + 5.0,
+            max_seconds=pre_buffer_s + max_segment_duration + post_buffer_s + 30.0,
             sample_rate=sample_rate,
             channels=channels,
         )
@@ -139,16 +175,17 @@ class Recorder:
         post_buffer_s: float,
         continuous_enabled: bool,
         continuous_chunk_minutes: int,
+        max_segment_duration: float = 15.0,
     ) -> None:
         with self._lock:
             self._pre_buffer_s = pre_buffer_s
             self._post_buffer_s = post_buffer_s
             self._continuous_chunk_minutes = continuous_chunk_minutes
+            self._max_segment_duration = max_segment_duration
             
-            # Recreate RingBuffer if pre_buffer_s changed significantly
-            # We add 5.0 seconds as margin
+            # Recreate RingBuffer with updated parameters
             self._ring = RingBuffer(
-                max_seconds=pre_buffer_s + 5.0,
+                max_seconds=pre_buffer_s + max_segment_duration + post_buffer_s + 30.0,
                 sample_rate=self._sample_rate,
                 channels=self._channels,
             )
@@ -196,34 +233,71 @@ class Recorder:
         alert_id: int,
         verdict: str,
         segment_timestamp: datetime,
+        start_mono: float,
+        end_mono: float,
         pre_s: Optional[float] = None,
         post_s: Optional[float] = None,
     ) -> None:
         """
-        Trigger a recording for the given alert.
-        Pre-buffer is extracted from ring buffer immediately.
-        Post-buffer continues collecting for post_s seconds.
+        Trigger a recording for the given alert using exact segment monotonic timestamps.
         """
         pre_s = pre_s if pre_s is not None else self._pre_buffer_s
         post_s = post_s if post_s is not None else self._post_buffer_s
 
-        # Extract pre-buffer now
-        pre_pcm = self._ring.get_last_n_seconds(pre_s)
+        # Calculate exact start/end monotonic timestamps
+        target_start_ts = start_mono - pre_s
+        target_end_ts = end_mono + post_s
 
-        with self._lock:
-            self._active[alert_id] = {
-                "start_ts": time.monotonic(),
-                "pre_pcm": pre_pcm,
-                "post_chunks": [],
-                "post_s": post_s,
-                "verdict": verdict,
-                "segment_timestamp": segment_timestamp,
-                "pre_s": pre_s,
-                "done": False,
-                "saved_path": None,
-            }
+        now = time.monotonic()
 
-        logger.info(f"[Recorder] Alert {alert_id} recording started (pre={pre_s}s, post={post_s}s)")
+        if now >= target_end_ts:
+            # Entire window is already in the ring buffer
+            recording_pcm = self._ring.get_range(target_start_ts, target_end_ts)
+            
+            with self._lock:
+                self._active[alert_id] = {
+                    "start_ts": now,
+                    "pre_pcm": recording_pcm,
+                    "post_chunks": [],
+                    "post_s": 0.0,
+                    "verdict": verdict,
+                    "segment_timestamp": segment_timestamp,
+                    "pre_s": pre_s,
+                    "done": True,
+                    "saved_path": None,
+                }
+            
+            # Save in background thread immediately
+            threading.Thread(
+                target=self._save_recording,
+                args=(alert_id, self._active[alert_id]),
+                daemon=True,
+            ).start()
+            logger.info(
+                f"[Recorder] Alert {alert_id} recording completed immediately from ring buffer "
+                f"(total={pre_s + (end_mono - start_mono) + post_s:.1f}s)"
+            )
+        else:
+            # Post buffer is still ongoing
+            # Extract what we have from target_start_ts up to now
+            pre_pcm = self._ring.get_range(target_start_ts, now)
+            
+            with self._lock:
+                self._active[alert_id] = {
+                    "start_ts": now,
+                    "pre_pcm": pre_pcm,
+                    "post_chunks": [],
+                    "post_s": target_end_ts - now,
+                    "verdict": verdict,
+                    "segment_timestamp": segment_timestamp,
+                    "pre_s": pre_s,
+                    "done": False,
+                    "saved_path": None,
+                }
+            logger.info(
+                f"[Recorder] Alert {alert_id} recording started (pre_s={pre_s:.1f}s, "
+                f"waiting for remaining post_s={target_end_ts - now:.1f}s)"
+            )
 
     def _save_recording(self, alert_id: int, rec: dict) -> None:
         try:
@@ -303,15 +377,18 @@ class Recorder:
         pre_buffer_s: Optional[float] = None,
         post_buffer_s: Optional[float] = None,
     ) -> None:
-        if pre_buffer_s is not None:
-            self._pre_buffer_s = pre_buffer_s
+        with self._lock:
+            if pre_buffer_s is not None:
+                self._pre_buffer_s = pre_buffer_s
+            if post_buffer_s is not None:
+                self._post_buffer_s = post_buffer_s
+            
+            # Recreate RingBuffer with new parameters
             self._ring = RingBuffer(
-                max_seconds=pre_buffer_s + 5.0,
+                max_seconds=self._pre_buffer_s + getattr(self, '_max_segment_duration', 15.0) + self._post_buffer_s + 30.0,
                 sample_rate=self._sample_rate,
                 channels=self._channels,
             )
-        if post_buffer_s is not None:
-            self._post_buffer_s = post_buffer_s
 
     # ──────────────────────────────────────────────────────
     # Continuous Recording Internals

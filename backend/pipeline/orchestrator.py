@@ -168,6 +168,7 @@ class PipelineOrchestrator:
                     post_buffer_s=self._rc.get("post_buffer_seconds", self._settings.post_buffer_seconds),
                     continuous_enabled=self._rc.get("continuous_recording_enabled", False),
                     continuous_chunk_minutes=self._rc.get("continuous_chunk_minutes", 10),
+                    max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
                 )
 
             # 3. Update AudioCapture or restart it if the audio device index changed
@@ -254,6 +255,7 @@ class PipelineOrchestrator:
             continuous_enabled=rc.get("continuous_recording_enabled", False),
             continuous_chunk_minutes=rc.get("continuous_chunk_minutes", 10),
             db_writer=self._db,
+            max_segment_duration=rc.get("vad_max_segment_duration", s.vad_max_segment_duration),
         )
 
     def _init_capture(self) -> None:
@@ -360,6 +362,8 @@ class PipelineOrchestrator:
                 "pcm": item["pcm"],
                 "timestamp": datetime.fromtimestamp(item["timestamp"], tz=timezone.utc),
                 "duration_s": item["duration_s"],
+                "start_mono": item["start_mono"],
+                "end_mono": item["end_mono"],
             })
             self._segment_queue.task_done()
 
@@ -473,6 +477,8 @@ class PipelineOrchestrator:
                     segment_id=segment_id,
                     segment_no=seg_no,
                     timestamp=timestamp,
+                    start_mono=item["start_mono"],
+                    end_mono=item["end_mono"],
                     fraud_result=fraud_result,
                     stt=stt,
                     duration_s=item["duration_s"],
@@ -486,7 +492,7 @@ class PipelineOrchestrator:
     # Alert Handler
     # ──────────────────────────────────────────────────────
 
-    def _handle_alert(self, segment_id, segment_no, timestamp, fraud_result, stt, duration_s) -> None:
+    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s) -> None:
         logger.info(
             f"[Alert] Segment #{segment_no}: {fraud_result.classification} "
             f"({fraud_result.confidence}%) — {fraud_result.reason[:60]}"
@@ -521,11 +527,11 @@ class PipelineOrchestrator:
         # Trigger recording + MQTT in background thread
         threading.Thread(
             target=self._alert_postprocess,
-            args=(alert_id, fraud_result, timestamp),
+            args=(alert_id, fraud_result, timestamp, start_mono, end_mono),
             daemon=True,
         ).start()
 
-    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime) -> None:
+    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime, start_mono: float, end_mono: float) -> None:
         """Handle recording + audio upload + MQTT in background."""
         # 1. Trigger recorder
         record_verdict = self._rc.get("record_on_verdict", "BOTH")
@@ -541,6 +547,8 @@ class PipelineOrchestrator:
                 alert_id=alert_id,
                 verdict=fraud_result.classification,
                 segment_timestamp=timestamp,
+                start_mono=start_mono,
+                end_mono=end_mono,
                 pre_s=self._rc.get("pre_buffer_seconds", 10.0),
                 post_s=self._rc.get("post_buffer_seconds", 15.0),
             )

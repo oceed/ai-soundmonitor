@@ -301,6 +301,7 @@ class AudioCapture:
         is_recording = False
         last_vad_state = "silence"
 
+        segment_start_mono = 0.0
         try:
             while self._running:
                 with self._lock:
@@ -359,6 +360,7 @@ class AudioCapture:
                         if consecutive_speech_frames >= 2:
                             is_recording = True
                             speech_frames = [data]
+                            segment_start_mono = ts - (self._chunk_size / self._sample_rate)
                             silence_frames = 0
                             logger.debug("[VAD] Speech started")
                     else:
@@ -370,14 +372,14 @@ class AudioCapture:
                         silence_frames += 1
                         speech_frames.append(data)
                         if silence_frames >= silence_limit:
-                            self._flush_segment(speech_frames, fps, min_frames, "silence")
+                            self._flush_segment(speech_frames, fps, min_frames, "silence", segment_start_mono, ts)
                             speech_frames = []
                             silence_frames = 0
                             is_recording = False
 
                 # Max segment length
                 if is_recording and len(speech_frames) >= max_frames:
-                    self._flush_segment(speech_frames, fps, min_frames, "maxlen")
+                    self._flush_segment(speech_frames, fps, min_frames, "maxlen", segment_start_mono, ts)
                     speech_frames = []
                     silence_frames = 0
                     is_recording = False
@@ -403,6 +405,8 @@ class AudioCapture:
         fps: int,
         min_frames: int,
         reason: str,
+        start_mono: float,
+        end_mono: float,
     ) -> None:
         duration = len(frames) / fps
         if len(frames) < min_frames:
@@ -413,6 +417,8 @@ class AudioCapture:
         self._segment_queue.put({
             "pcm": pcm,
             "timestamp": time.time(),
+            "start_mono": start_mono,
+            "end_mono": end_mono,
             "duration_s": duration,
             "reason": reason,
         })
