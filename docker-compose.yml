@@ -22,6 +22,8 @@ services:
     volumes:
       - ./storage:/app/storage
       - /dev/snd:/dev/snd
+      - /proc/asound:/proc/asound:ro
+      - /usr/share/alsa:/usr/share/alsa:ro
     ports:
       - "${BACKEND_PORT:-8001}:8001"
     # Required for dynamic ALSA audio access (hotplug)
