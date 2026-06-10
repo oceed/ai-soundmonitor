@@ -21,11 +21,11 @@ services:
       - DATABASE_PATH=/app/storage/fraud_detection.db
     volumes:
       - ./storage:/app/storage
+      - /dev/snd:/dev/snd
     ports:
       - "${BACKEND_PORT:-8001}:8001"
-    # Audio device passthrough for microphone access
-    devices:
-      - /dev/snd:/dev/snd
+    # Required for dynamic ALSA audio access (hotplug)
+    privileged: true
     # Required for ALSA audio access
     group_add:
       - audio

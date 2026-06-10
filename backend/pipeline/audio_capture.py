@@ -192,20 +192,33 @@ class AudioCapture:
 
         # Auto: prefer USB/OBSBOT mic
         n = pa.get_device_count()
-        # 1. Search for OBSBOT or other USB input devices
+        # 1. Search specifically for OBSBOT devices first
         for i in range(n):
             try:
                 dev = pa.get_device_info_by_index(i)
                 if dev.get("maxInputChannels", 0) > 0:
                     name = dev.get("name", "").lower()
-                    if any(k in name for k in ["usb", "cam", "webcam", "uvc", "obsbot"]):
+                    if "obsbot" in name:
+                        self._actual_device_name = dev.get("name", f"Device {i}")
+                        logger.info(f"[Capture] Auto-selected OBSBOT device: {self._actual_device_name} [{i}]")
+                        return i
+            except Exception:
+                continue
+
+        # 2. Search for other USB input devices
+        for i in range(n):
+            try:
+                dev = pa.get_device_info_by_index(i)
+                if dev.get("maxInputChannels", 0) > 0:
+                    name = dev.get("name", "").lower()
+                    if any(k in name for k in ["usb", "cam", "webcam", "uvc"]):
                         self._actual_device_name = dev.get("name", f"Device {i}")
                         logger.info(f"[Capture] Auto-selected USB device: {self._actual_device_name} [{i}]")
                         return i
             except Exception:
                 continue
 
-        # 2. Search for any other available input device
+        # 3. Search for any other available input device
         for i in range(n):
             try:
                 dev = pa.get_device_info_by_index(i)
