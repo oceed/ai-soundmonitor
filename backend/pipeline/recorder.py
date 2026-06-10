@@ -176,12 +176,14 @@ class Recorder:
         continuous_enabled: bool,
         continuous_chunk_minutes: int,
         max_segment_duration: float = 15.0,
+        recording_format: str = "ogg",
     ) -> None:
         with self._lock:
             self._pre_buffer_s = pre_buffer_s
             self._post_buffer_s = post_buffer_s
             self._continuous_chunk_minutes = continuous_chunk_minutes
             self._max_segment_duration = max_segment_duration
+            self._format = recording_format
             
             # Recreate RingBuffer with updated parameters
             self._ring = RingBuffer(
@@ -298,6 +300,49 @@ class Recorder:
                 f"[Recorder] Alert {alert_id} recording started (pre_s={pre_s:.1f}s, "
                 f"waiting for remaining post_s={target_end_ts - now:.1f}s)"
             )
+
+    def save_exact_segment(
+        self,
+        alert_id: int,
+        verdict: str,
+        segment_timestamp: datetime,
+        pcm: bytes,
+    ) -> Optional[dict]:
+        """
+        Immediately saves the exact segment PCM bytes as a wav or ogg file,
+        without using the RingBuffer or background threads.
+        """
+        if not pcm:
+            logger.warning(f"[Recorder] Exact segment for alert {alert_id} has no audio data")
+            return None
+
+        ts = segment_timestamp
+        date_dir = self._recordings_dir / ts.strftime("%Y-%m-%d")
+        date_dir.mkdir(parents=True, exist_ok=True)
+
+        verdict_short = verdict.replace("FRAUD_", "F_")
+        filename = f"{ts.strftime('%H-%M-%S')}_{verdict_short}_{alert_id}.{self._format}"
+        filepath = date_dir / filename
+
+        try:
+            if self._format == "ogg":
+                self._save_ogg(pcm, filepath)
+            else:
+                self._save_wav(pcm, filepath)
+
+            duration_s = len(pcm) / (self._sample_rate * 2 * self._channels)
+            logger.info(
+                f"[Recorder] Saved exact alert {alert_id} recording: {filepath.name} "
+                f"({duration_s:.1f}s, {len(pcm)//1024}KB)"
+            )
+            return {
+                "path": str(filepath),
+                "duration_s": duration_s,
+                "filename": filename,
+            }
+        except Exception as e:
+            logger.error(f"[Recorder] Failed to save exact segment for alert {alert_id}: {e}")
+            return None
 
     def _save_recording(self, alert_id: int, rec: dict) -> None:
         try:

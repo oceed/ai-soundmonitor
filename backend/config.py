@@ -188,6 +188,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "vad_auto_calibrate": True,
     "continuous_recording_enabled": False,
     "continuous_chunk_minutes": 10,
+    "alert_recording_mode": "exact_segment",
     "pre_buffer_seconds": 10.0,
     "post_buffer_seconds": 15.0,
     "retention_days": 7,

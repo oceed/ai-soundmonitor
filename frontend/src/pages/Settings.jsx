@@ -378,6 +378,8 @@ function RecordingTab({ config, onSave, saving }) {
   const [recordOn, setRecordOn] = useState(config.record_on_verdict ?? 'BOTH')
   const [continuousEnabled, setContinuousEnabled] = useState(config.continuous_recording_enabled ?? false)
   const [continuousMinutes, setContinuousMinutes] = useState(config.continuous_chunk_minutes ?? 10)
+  const [recordingFormat, setRecordingFormat] = useState(config.recording_format ?? 'ogg')
+  const [alertRecordingMode, setAlertRecordingMode] = useState(config.alert_recording_mode ?? 'exact_segment')
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -394,18 +396,37 @@ function RecordingTab({ config, onSave, saving }) {
         </SettingRow>
       )}
 
-      <SettingRow label="Pre-Event Buffer" hint="Seconds of audio to keep BEFORE the fraud was detected">
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="number" className="form-input" value={preBuffer} onChange={e => setPreBuffer(Number(e.target.value))} min={1} max={60} style={{ width: 80 }} />
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
-        </div>
+      <SettingRow label="Alert Recording Mode" hint="Pilih mode perekaman audio saat terjadi alert kecurangan.">
+        <select className="form-select" value={alertRecordingMode} onChange={e => setAlertRecordingMode(e.target.value)}>
+          <option value="exact_segment">Pas Segmen Transkrip (Sangat Robust & Aman dari Crash)</option>
+          <option value="buffer">Menggunakan Pre/Post Buffer (Bisa Mengambil Suara Sebelum Alert Terjadi)</option>
+        </select>
       </SettingRow>
-      <SettingRow label="Post-Event Buffer" hint="Seconds of audio to continue recording AFTER the fraud was detected">
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="number" className="form-input" value={postBuffer} onChange={e => setPostBuffer(Number(e.target.value))} min={1} max={120} style={{ width: 80 }} />
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
-        </div>
+
+      <SettingRow label="Audio File Format" hint="Pilih format file audio yang disimpan. Format WAV (tanpa kompresi) menggunakan library Python standar dan 100% aman dari crash sistem.">
+        <select className="form-select" value={recordingFormat} onChange={e => setRecordingFormat(e.target.value)}>
+          <option value="ogg">OGG (Ukuran File Lebih Kecil)</option>
+          <option value="wav">WAV (Sangat Stabil & Native)</option>
+        </select>
       </SettingRow>
+
+      {alertRecordingMode === 'buffer' && (
+        <>
+          <SettingRow label="Pre-Event Buffer" hint="Seconds of audio to keep BEFORE the fraud was detected">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="number" className="form-input" value={preBuffer} onChange={e => setPreBuffer(Number(e.target.value))} min={1} max={60} style={{ width: 80 }} />
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
+            </div>
+          </SettingRow>
+          <SettingRow label="Post-Event Buffer" hint="Seconds of audio to continue recording AFTER the fraud was detected">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="number" className="form-input" value={postBuffer} onChange={e => setPostBuffer(Number(e.target.value))} min={1} max={120} style={{ width: 80 }} />
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
+            </div>
+          </SettingRow>
+        </>
+      )}
+
       <SettingRow label="Record On Verdict" hint="Which verdicts trigger a recording">
         <select className="form-select" value={recordOn} onChange={e => setRecordOn(e.target.value)}>
           <option value="BOTH">Both FRAUD and SUSPICIOUS</option>
@@ -420,6 +441,8 @@ function RecordingTab({ config, onSave, saving }) {
           record_on_verdict: recordOn,
           continuous_recording_enabled: continuousEnabled,
           continuous_chunk_minutes: continuousMinutes,
+          recording_format: recordingFormat,
+          alert_recording_mode: alertRecordingMode,
         })} />
       </div>
     </div>

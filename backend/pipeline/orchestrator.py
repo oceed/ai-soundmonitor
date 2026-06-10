@@ -169,6 +169,7 @@ class PipelineOrchestrator:
                     continuous_enabled=self._rc.get("continuous_recording_enabled", False),
                     continuous_chunk_minutes=self._rc.get("continuous_chunk_minutes", 10),
                     max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
+                    recording_format=self._rc.get("recording_format", self._settings.recording_format),
                 )
 
             # 3. Update AudioCapture or restart it if the audio device index changed
@@ -484,6 +485,7 @@ class PipelineOrchestrator:
                     fraud_result=fraud_result,
                     stt=stt,
                     duration_s=item["duration_s"],
+                    pcm=item.get("pcm"),
                 )
 
             self._llm_queue.task_done()
@@ -494,7 +496,7 @@ class PipelineOrchestrator:
     # Alert Handler
     # ──────────────────────────────────────────────────────
 
-    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s) -> None:
+    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None) -> None:
         logger.info(
             f"[Alert] Segment #{segment_no}: {fraud_result.classification} "
             f"({fraud_result.confidence}%) — {fraud_result.reason[:60]}"
@@ -529,11 +531,11 @@ class PipelineOrchestrator:
         # Trigger recording + MQTT in background thread
         threading.Thread(
             target=self._alert_postprocess,
-            args=(alert_id, fraud_result, timestamp, start_mono, end_mono),
+            args=(alert_id, fraud_result, timestamp, start_mono, end_mono, pcm),
             daemon=True,
         ).start()
 
-    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime, start_mono: float, end_mono: float) -> None:
+    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime, start_mono: float, end_mono: float, pcm: bytes = None) -> None:
         """Handle recording + audio upload + MQTT in background."""
         # 1. Trigger recorder
         record_verdict = self._rc.get("record_on_verdict", "BOTH")
@@ -545,18 +547,29 @@ class PipelineOrchestrator:
 
         recording_info = None
         if should_record and self._recorder:
-            self._recorder.start_alert_recording(
-                alert_id=alert_id,
-                verdict=fraud_result.classification,
-                segment_timestamp=timestamp,
-                start_mono=start_mono,
-                end_mono=end_mono,
-                pre_s=self._rc.get("pre_buffer_seconds", 10.0),
-                post_s=self._rc.get("post_buffer_seconds", 15.0),
-            )
-            recording_info = self._recorder.wait_for_recording(
-                alert_id, timeout=self._rc.get("post_buffer_seconds", 15.0) + 30
-            )
+            mode = self._rc.get("alert_recording_mode", "exact_segment")
+            if mode == "exact_segment" and pcm:
+                # Instant robust direct segment save
+                recording_info = self._recorder.save_exact_segment(
+                    alert_id=alert_id,
+                    verdict=fraud_result.classification,
+                    segment_timestamp=timestamp,
+                    pcm=pcm,
+                )
+            else:
+                # Buffered pre/post buffer save
+                self._recorder.start_alert_recording(
+                    alert_id=alert_id,
+                    verdict=fraud_result.classification,
+                    segment_timestamp=timestamp,
+                    start_mono=start_mono,
+                    end_mono=end_mono,
+                    pre_s=self._rc.get("pre_buffer_seconds", 10.0),
+                    post_s=self._rc.get("post_buffer_seconds", 15.0),
+                )
+                recording_info = self._recorder.wait_for_recording(
+                    alert_id, timeout=self._rc.get("post_buffer_seconds", 15.0) + 30
+                )
 
         # 2. Update alert with recording path
         if recording_info:
