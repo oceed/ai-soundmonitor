@@ -9,7 +9,7 @@ GET  /api/alerts/stats    → aggregated stats
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -152,7 +152,7 @@ def _alert_to_dict(a: Alert) -> dict:
         "id": a.id,
         "segment_id": a.segment_id,
         "session_id": a.session_id,
-        "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        "timestamp": a.timestamp.replace(tzinfo=timezone.utc).isoformat() if a.timestamp else None,
         "verdict": a.verdict,
         "classification": a.verdict,  # for compatibility
         "confidence": a.confidence,
@@ -170,5 +170,5 @@ def _alert_to_dict(a: Alert) -> dict:
         "audio_upload_id": a.audio_upload_id,
         "audio_upload_sent": a.audio_upload_sent,
         "mqtt_sent": a.mqtt_sent,
-        "mqtt_sent_at": a.mqtt_sent_at.isoformat() if a.mqtt_sent_at else None,
+        "mqtt_sent_at": a.mqtt_sent_at.replace(tzinfo=timezone.utc).isoformat() if a.mqtt_sent_at else None,
     }

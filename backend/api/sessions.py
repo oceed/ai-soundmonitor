@@ -9,6 +9,7 @@ GET /api/segments          → list segments with filters
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -82,7 +83,7 @@ async def list_segments(
             {
                 "id": s.id,
                 "session_id": s.session_id,
-                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+                "timestamp": s.timestamp.replace(tzinfo=timezone.utc).isoformat() if s.timestamp else None,
                 "transcript": s.transcript,
                 "verdict": s.verdict,
                 "confidence": s.confidence,
@@ -104,8 +105,8 @@ async def list_segments(
 def _session_to_dict(s: RecordingSession) -> dict:
     return {
         "id": s.id,
-        "start_time": s.start_time.isoformat() if s.start_time else None,
-        "end_time": s.end_time.isoformat() if s.end_time else None,
+        "start_time": s.start_time.replace(tzinfo=timezone.utc).isoformat() if s.start_time else None,
+        "end_time": s.end_time.replace(tzinfo=timezone.utc).isoformat() if s.end_time else None,
         "device_name": s.device_name,
         "stt_mode": s.stt_mode,
         "llm_mode": s.llm_mode,

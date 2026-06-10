@@ -57,7 +57,7 @@ async def get_timeline(
         items.append({
             "segment_id": s.id,
             "alert_id": s.alert.id if s.alert else None,
-            "timestamp": s.timestamp.isoformat(),
+            "timestamp": s.timestamp.replace(tzinfo=timezone.utc).isoformat(),
             "verdict": s.verdict,
             "confidence": s.confidence,
             "risk_level": s.risk_level,
@@ -79,8 +79,8 @@ async def get_timeline(
     for c in conts:
         cont_items.append({
             "id": c.id,
-            "start_time": c.start_time.isoformat(),
-            "end_time": c.end_time.isoformat(),
+            "start_time": c.start_time.replace(tzinfo=timezone.utc).isoformat(),
+            "end_time": c.end_time.replace(tzinfo=timezone.utc).isoformat(),
             "duration_s": c.duration_s,
             "filename": c.filename,
         })
