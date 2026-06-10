@@ -21,8 +21,8 @@ services:
       - DATABASE_PATH=/app/storage/fraud_detection.db
     volumes:
       - ./storage:/app/storage
-      - /dev/snd:/dev/snd
-      - /proc/asound:/proc/asound:ro
+      - /dev/snd:/dev/snd:rslave
+      - /dev/bus/usb:/dev/bus/usb:rslave
       - /usr/share/alsa:/usr/share/alsa:ro
     ports:
       - "${BACKEND_PORT:-8001}:8001"
