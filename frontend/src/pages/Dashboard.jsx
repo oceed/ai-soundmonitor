@@ -575,11 +575,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
       </div>
 
       {/* ── Stat bar (4 cards) ── */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 12, padding: '14px 24px', flexShrink: 0,
-        borderBottom: '1px solid var(--border)',
-      }}>
+      <div className="stat-bar">
         {[
           {
             label: 'Total Segments',
@@ -645,19 +641,10 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
       </div>
 
       {/* ── Main body: 2-column layout ── */}
-      <div style={{
-        flex: 1, display: 'flex', gap: 0,
-        overflow: 'hidden', minHeight: 0,
-      }}>
+      <div style={{ flex: 1, display: 'flex', gap: 0, overflow: 'hidden', minHeight: 0 }}>
 
         {/* Left panel: audio + system + distribution */}
-        <div style={{
-          width: 320, flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 12,
-          padding: '16px 0 16px 24px',
-          borderRight: '1px solid var(--border)',
-          overflowY: 'auto',
-        }}>
+        <div className="dashboard-left-panel">
           {/* Audio Visualizer card */}
           <div className="card" style={{ padding: '14px 16px', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -710,7 +697,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         </div>
 
         {/* Right panel: live transcript feed */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <div className="dashboard-right-panel">
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '16px 20px 10px',
