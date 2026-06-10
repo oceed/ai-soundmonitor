@@ -149,10 +149,9 @@ class AudioCapture:
             import pyaudio
             pa = pyaudio.PyAudio()
             devices = []
-            host_info = pa.get_host_api_info_by_index(0)
-            n = host_info.get("deviceCount", 0)
+            n = pa.get_device_count()
             for i in range(n):
-                dev = pa.get_device_info_by_host_api_device_index(0, i)
+                dev = pa.get_device_info_by_index(i)
                 if dev.get("maxInputChannels", 0) > 0:
                     devices.append({
                         "index": i,
@@ -184,21 +183,38 @@ class AudioCapture:
             idx = self._device_index
 
         if idx >= 0:
-            dev = pa.get_device_info_by_index(idx)
-            self._actual_device_name = dev.get("name", f"Device {idx}")
-            return idx
+            try:
+                dev = pa.get_device_info_by_index(idx)
+                self._actual_device_name = dev.get("name", f"Device {idx}")
+                return idx
+            except Exception as e:
+                logger.warning(f"[Capture] Failed to get device info for index {idx}: {e}. Falling back to auto-detect.")
 
-        # Auto: prefer USB mic
-        host_info = pa.get_host_api_info_by_index(0)
-        n = host_info.get("deviceCount", 0)
+        # Auto: prefer USB/OBSBOT mic
+        n = pa.get_device_count()
+        # 1. Search for OBSBOT or other USB input devices
         for i in range(n):
-            dev = pa.get_device_info_by_host_api_device_index(0, i)
-            if dev.get("maxInputChannels", 0) > 0:
-                name = dev.get("name", "").lower()
-                if any(k in name for k in ["usb", "cam", "webcam", "uvc"]):
+            try:
+                dev = pa.get_device_info_by_index(i)
+                if dev.get("maxInputChannels", 0) > 0:
+                    name = dev.get("name", "").lower()
+                    if any(k in name for k in ["usb", "cam", "webcam", "uvc", "obsbot"]):
+                        self._actual_device_name = dev.get("name", f"Device {i}")
+                        logger.info(f"[Capture] Auto-selected USB device: {self._actual_device_name} [{i}]")
+                        return i
+            except Exception:
+                continue
+
+        # 2. Search for any other available input device
+        for i in range(n):
+            try:
+                dev = pa.get_device_info_by_index(i)
+                if dev.get("maxInputChannels", 0) > 0:
                     self._actual_device_name = dev.get("name", f"Device {i}")
-                    logger.info(f"[Capture] Auto-selected USB device: {self._actual_device_name} [{i}]")
+                    logger.info(f"[Capture] Auto-selected device: {self._actual_device_name} [{i}]")
                     return i
+            except Exception:
+                continue
 
         # Fallback: default device
         self._actual_device_name = "Default Microphone"

@@ -36,6 +36,7 @@ class STTResult:
             "チャンネル登録",
             "thank you for watching",
             "subtitles by",
+            "thank you"
         ]
         
         lower_text = cleaned_text.lower()
@@ -64,11 +65,12 @@ class STTResult:
 # ─────────────────────────────────────────────────────────
 
 class GroqSTT:
-    def __init__(self, api_key: str, model: str = "whisper-large-v3-turbo", timeout: int = 120):
+    def __init__(self, api_key: str, model: str = "whisper-large-v3-turbo", timeout: int = 120, language: Optional[str] = "id"):
         from groq import Groq
         self._client = Groq(api_key=api_key)
         self._model = model
         self._timeout = timeout
+        self._language = language if language and language != "auto" else None
 
     def transcribe(self, pcm_bytes: bytes, sample_rate: int = 16000, channels: int = 1) -> STTResult:
         t0 = time.time()
@@ -78,7 +80,7 @@ class GroqSTT:
                 file=("audio.wav", wav_bytes, "audio/wav"),
                 model=self._model,
                 response_format="text",
-                language="id",
+                language=self._language,
                 timeout=self._timeout,
             )
             text = result if isinstance(result, str) else getattr(result, "text", "")
@@ -95,11 +97,12 @@ class GroqSTT:
 # ─────────────────────────────────────────────────────────
 
 class LocalSTT:
-    def __init__(self, model_name: str = "base", device: str = "cpu", compute_type: str = "int8"):
+    def __init__(self, model_name: str = "base", device: str = "cpu", compute_type: str = "int8", language: Optional[str] = "id"):
         self._model_name = model_name
         self._device = device
         self._compute_type = compute_type
         self._model = None  # Lazy load
+        self._language = language if language and language != "auto" else None
 
     def _ensure_loaded(self) -> None:
         if self._model is None:
@@ -121,7 +124,7 @@ class LocalSTT:
             segments, _ = self._model.transcribe(
                 buf,
                 beam_size=3,
-                language="id",  # Indonesian; set to None for auto-detect
+                language=self._language,
                 vad_filter=False,  # We handle VAD ourselves
             )
             text = " ".join(seg.text for seg in segments)
@@ -152,6 +155,7 @@ class STTEngine:
         local_device: str = "cpu",
         local_compute_type: str = "int8",
         timeout: int = 120,
+        language: Optional[str] = "id",
     ):
         self._mode = mode
         self._groq: Optional[GroqSTT] = None
@@ -159,13 +163,14 @@ class STTEngine:
         self._timeout = timeout
 
         if groq_api_key:
-            self._groq = GroqSTT(api_key=groq_api_key, model=groq_model, timeout=timeout)
+            self._groq = GroqSTT(api_key=groq_api_key, model=groq_model, timeout=timeout, language=language)
 
         if mode in ("local", "auto"):
             self._local = LocalSTT(
                 model_name=local_model,
                 device=local_device,
                 compute_type=local_compute_type,
+                language=language,
             )
 
     def transcribe(self, pcm_bytes: bytes, sample_rate: int = 16000, channels: int = 1) -> STTResult:

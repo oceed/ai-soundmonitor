@@ -97,6 +97,7 @@ function SystemPanel({ pipelineStatus, feed }) {
 
   const rows = [
     { label: 'Session', value: `#${pipelineStatus?.stats?.session_id || '—'}` },
+    { label: 'Active Mic', value: pipelineStatus?.stats?.active_mic_name || '—' },
     { label: 'STT Mode', value: pipelineStatus?.stats?.stt_mode || '—', mono: true },
     { label: 'LLM Mode', value: pipelineStatus?.stats?.llm_mode || '—', mono: true },
     { label: 'Avg STT', value: sttTimes.length ? `${avg(sttTimes)} ms` : '—', mono: true },

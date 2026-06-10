@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     local_whisper_model: str = "base"
     local_whisper_device: str = "cpu"
     local_whisper_compute_type: str = "int8"
+    stt_language: Optional[str] = "id"
 
     # Local LLM
     local_llm_url: str = "http://localhost:11434"
@@ -181,6 +182,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "device_name": "VoiceGuard-Store-01",
     # These mirror .env but can be overridden at runtime
     "stt_mode": "auto",
+    "stt_language": "id",
     "llm_mode": "auto",
     "vad_threshold": 300.0,
     "vad_silence_duration": 1.5,

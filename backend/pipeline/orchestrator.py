@@ -121,6 +121,7 @@ class PipelineOrchestrator:
             "llm_mode": self._rc.get("llm_mode", "auto"),
             "device_name": self._rc.get("device_name", ""),
             "session_id": self._session_id,
+            "active_mic_name": self._capture.device_name if self._capture else "None",
         })
 
     def stop(self) -> None:
@@ -202,6 +203,7 @@ class PipelineOrchestrator:
                 "segments": self._segment_counter,
                 "vad_state": self._vad_state,
                 "rms": self._current_rms,
+                "active_mic_name": self._capture.device_name if self._capture else "None",
             }
 
     # ──────────────────────────────────────────────────────
@@ -220,6 +222,7 @@ class PipelineOrchestrator:
             local_device=s.local_whisper_device,
             local_compute_type=s.local_whisper_compute_type,
             timeout=s.stt_timeout,
+            language=rc.get("stt_language", s.stt_language),
         )
 
     def _init_llm(self) -> None:

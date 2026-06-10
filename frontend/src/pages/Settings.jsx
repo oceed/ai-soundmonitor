@@ -306,6 +306,7 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
 function STTTab({ config, onSave, saving }) {
   const [mode, setMode] = useState(config.stt_mode ?? 'auto')
   const [localModel, setLocalModel] = useState(config.local_whisper_model ?? 'base')
+  const [language, setLanguage] = useState(config.stt_language ?? 'id')
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -316,6 +317,13 @@ function STTTab({ config, onSave, saving }) {
           <option value="local">Local Only (faster-whisper)</option>
         </select>
       </SettingRow>
+      <SettingRow label="STT Language" hint="Target transcription language. Select Auto-detect to support tourists or other languages dynamically.">
+        <select className="form-select" value={language} onChange={e => setLanguage(e.target.value)}>
+          <option value="id">Bahasa Indonesia</option>
+          <option value="en">English</option>
+          <option value="auto">Auto-detect (Multi-language)</option>
+        </select>
+      </SettingRow>
       <SettingRow label="Local Whisper Model" hint="Smaller = faster but less accurate. Recommended: base or small for OrangePi">
         <select className="form-select" value={localModel} onChange={e => setLocalModel(e.target.value)}>
           {['tiny', 'base', 'small', 'medium', 'large-v3'].map(m => (
@@ -324,7 +332,7 @@ function STTTab({ config, onSave, saving }) {
         </select>
       </SettingRow>
       <div style={{ paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-        <SaveBtn saving={saving} onClick={() => onSave({ stt_mode: mode, local_whisper_model: localModel })} />
+        <SaveBtn saving={saving} onClick={() => onSave({ stt_mode: mode, local_whisper_model: localModel, stt_language: language })} />
       </div>
     </div>
   )
