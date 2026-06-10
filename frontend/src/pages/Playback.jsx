@@ -11,6 +11,7 @@ export function Playback() {
   const [selectedAlert, setSelectedAlert] = useState(null)
   const [activeContinuousRec, setActiveContinuousRec] = useState(null)
   const [currentPlayRatio, setCurrentPlayRatio] = useState(null)
+  const [visibleCount, setVisibleCount] = useState(50)
   const audioRef = useRef(null)
   const { addToast } = useToast()
 
@@ -19,6 +20,7 @@ export function Playback() {
     setSelectedAlert(null)
     setActiveContinuousRec(null)
     setCurrentPlayRatio(null)
+    setVisibleCount(50)
     try {
       const data = await getTimeline(d)
       setTimelineData(data)
@@ -106,29 +108,62 @@ export function Playback() {
     })
 
     if (matchingCont) {
-      setActiveContinuousRec(matchingCont)
       const offset = (targetDate.getTime() - new Date(matchingCont.start_time).getTime()) / 1000
-      
       setSelectedAlert(null)
-      setTimeout(() => {
-        if (!audioRef.current) return
-        audioRef.current.src = getContinuousStreamUrl(matchingCont.id)
-        audioRef.current.load()
-        audioRef.current.currentTime = offset
-        audioRef.current.play().catch(() => {})
-      }, 100)
       
-      addToast({
-        type: 'info',
-        title: 'Continuous playback',
-        body: `Playing chunk starting at ${format(new Date(matchingCont.start_time), 'HH:mm:ss')}`
-      })
+      if (activeContinuousRec && activeContinuousRec.id === matchingCont.id) {
+        // Same chunk: seek directly without re-fetching/reloading audio source
+        if (audioRef.current) {
+          audioRef.current.currentTime = offset
+          audioRef.current.play().catch(() => {})
+        }
+      } else {
+        // Different chunk: load and seek
+        setActiveContinuousRec(matchingCont)
+        setTimeout(() => {
+          if (!audioRef.current) return
+          audioRef.current.src = getContinuousStreamUrl(matchingCont.id)
+          audioRef.current.load()
+          audioRef.current.currentTime = offset
+          audioRef.current.play().catch(() => {})
+        }, 100)
+        
+        addToast({
+          type: 'info',
+          title: 'Continuous playback',
+          body: `Playing chunk starting at ${format(new Date(matchingCont.start_time), 'HH:mm:ss')}`
+        })
+      }
     } else {
       addToast({
         type: 'warning',
         title: 'No continuous recording',
         body: 'No continuous audio recorded at this specific hour.'
       })
+    }
+  }
+
+  const handleAudioEnded = () => {
+    if (activeContinuousRec && timelineData?.continuous_recordings) {
+      const currentIdx = timelineData.continuous_recordings.findIndex(c => c.id === activeContinuousRec.id)
+      if (currentIdx !== -1 && currentIdx + 1 < timelineData.continuous_recordings.length) {
+        const nextCont = timelineData.continuous_recordings[currentIdx + 1]
+        const currentEnd = new Date(activeContinuousRec.end_time).getTime()
+        const nextStart = new Date(nextCont.start_time).getTime()
+        const gapMs = Math.abs(nextStart - currentEnd)
+        
+        // Auto-advance to the next continuous recording if the gap is less than 5 seconds
+        if (gapMs < 5000) {
+          setActiveContinuousRec(nextCont)
+          setTimeout(() => {
+            if (!audioRef.current) return
+            audioRef.current.src = getContinuousStreamUrl(nextCont.id)
+            audioRef.current.load()
+            audioRef.current.currentTime = 0
+            audioRef.current.play().catch(() => {})
+          }, 100)
+        }
+      }
     }
   }
 
@@ -215,45 +250,56 @@ export function Playback() {
                   <div className="empty-state-sub">No recorded segments on this date</div>
                 </div>
               ) : (
-                timelineData?.alerts?.map(alert => {
-                  const isSelected = selectedAlert?.segment_id 
-                    ? selectedAlert.segment_id === alert.segment_id 
-                    : (selectedAlert?.alert_id && selectedAlert.alert_id === alert.alert_id)
-                  
-                  return (
-                    <div
-                      key={alert.segment_id || alert.alert_id}
-                      onClick={() => handleAlertClick(alert)}
-                      style={{
-                        padding: '10px 12px',
-                        background: isSelected ? 'var(--bg-hover)' : 'var(--bg-card)',
-                        border: `1px solid ${isSelected ? VERDICT_COLOR[alert.verdict] || 'var(--border-active)' : 'var(--border)'}`,
-                        borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        transition: 'all var(--t-fast)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
-                          {alert.verdict}
-                        </span>
-                        {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
-                      </div>
-                      <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-                        {format(new Date(alert.timestamp), 'HH:mm:ss')}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
-                        "{alert.transcript || 'No speech recorded'}"
-                      </div>
-                      {alert.reason && (
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {alert.reason}
+                <>
+                  {timelineData?.alerts?.slice(0, visibleCount).map(alert => {
+                    const isSelected = selectedAlert?.segment_id 
+                      ? selectedAlert.segment_id === alert.segment_id 
+                      : (selectedAlert?.alert_id && selectedAlert.alert_id === alert.alert_id)
+                    
+                    return (
+                      <div
+                        key={alert.segment_id || alert.alert_id}
+                        onClick={() => handleAlertClick(alert)}
+                        style={{
+                          padding: '10px 12px',
+                          background: isSelected ? 'var(--bg-hover)' : 'var(--bg-card)',
+                          border: `1px solid ${isSelected ? VERDICT_COLOR[alert.verdict] || 'var(--border-active)' : 'var(--border)'}`,
+                          borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          transition: 'all var(--t-fast)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
+                            {alert.verdict}
+                          </span>
+                          {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
                         </div>
-                      )}
-                    </div>
-                  )
-                })
+                        <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                          {format(new Date(alert.timestamp), 'HH:mm:ss')}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
+                          "{alert.transcript || 'No speech recorded'}"
+                        </div>
+                        {alert.reason && (
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {alert.reason}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {timelineData?.alerts?.length > visibleCount && (
+                    <button 
+                      className="btn btn-ghost btn-xs w-full" 
+                      onClick={() => setVisibleCount(prev => prev + 50)}
+                      style={{ padding: '8px', fontSize: 11, color: 'var(--text-secondary)' }}
+                    >
+                      Load More Events (+50)
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -320,6 +366,7 @@ export function Playback() {
                   <audio
                     ref={audioRef}
                     onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleAudioEnded}
                     controls
                     style={{ width: '100%', accentColor: 'var(--accent)' }}
                   />

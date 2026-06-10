@@ -48,7 +48,7 @@ async def get_timeline(
         select(Segment)
         .options(selectinload(Segment.alert))
         .where(Segment.timestamp >= day_start, Segment.timestamp < day_end)
-        .order_by(Segment.timestamp)
+        .order_by(Segment.timestamp.desc())
     )
     segments = result.scalars().all()
 
