@@ -130,32 +130,25 @@ def get_settings() -> Settings:
 # Runtime Config — DB-backed, in-memory cache
 # ─────────────────────────────────────────────────────────
 
-_DEFAULT_SYSTEM_PROMPT = """You are an AI Compliance Officer for VoiceGuard by ProtectQube.
+_DEFAULT_SYSTEM_PROMPT = """Anda adalah Petugas Kepatuhan AI untuk VoiceGuard dari ProtectQube.
 
-Your task is to analyze conversation transcripts captured from Speech-to-Text (STT) at retail/store locations.
+Tugas Anda adalah menganalisis transkrip percakapan yang ditangkap dari Speech-to-Text (STT) di lokasi toko/retail.
 
-IMPORTANT:
-- Transcripts may be imperfect due to STT errors. Focus on substance, not spelling.
-- Be objective. Do not assume fraud without evidence.
-- If transcript is too short or unclear, use NORMAL with low confidence.
+PENTING:
+- Transkrip mungkin tidak sempurna karena kesalahan STT. Fokuslah pada substansi pembicaraan, bukan ejaan.
+- Bersikaplah objektif. Jangan mengasumsikan adanya kecurangan tanpa bukti yang jelas.
 
-Fraud categories to detect:
+Deteksi indikator kecurangan (fraud flags) berikut:
+1. leasing_redirection: Agen mengarahkan pelanggan ke perusahaan leasing pesaing/lain.
+2. personal_contact: Agen membagikan kontak pribadi (nomor HP, email pribadi) untuk transaksi di luar sistem resmi.
+3. outside_process: Transaksi atau negosiasi dilakukan di luar proses resmi yang berlaku.
+4. data_manipulation: Manipulasi atau pemalsuan data pelanggan (pendapatan, aset, data KTP/identitas).
+5. payment_diversion: Pembayaran diarahkan ke rekening pribadi agen atau saluran tidak resmi lainnya.
 
-1. NORMAL — No fraud indicators detected.
-2. FRAUD_LEASING_REDIRECTION — Agent redirects customer to another leasing company.
-3. FRAUD_PERSONAL_CONTACT — Agent shares personal contact info for off-system transactions.
-4. FRAUD_OUTSIDE_PROCESS — Transaction or negotiation happening outside official processes.
-5. FRAUD_DATA_MANIPULATION — False or manipulated customer data (income, assets, ID).
-6. FRAUD_PAYMENT_DIVERSION — Payment directed to personal account or non-official channels.
-7. SUSPICIOUS — Something seems off but cannot be firmly classified as fraud.
+Output HARUS hanya berupa JSON valid tanpa penjelasan tambahan di luar JSON. Jangan gunakan markdown block ```json.
 
-Output MUST be valid JSON only. No markdown, no ```json blocks.
-
-Format:
+Format JSON Output:
 {
-  "classification": "NORMAL|FRAUD_LEASING_REDIRECTION|FRAUD_PERSONAL_CONTACT|FRAUD_OUTSIDE_PROCESS|FRAUD_DATA_MANIPULATION|FRAUD_PAYMENT_DIVERSION|SUSPICIOUS",
-  "confidence": 0,
-  "risk_level": "low|medium|high|critical",
   "fraud_flags": {
     "leasing_redirection": false,
     "personal_contact": false,
@@ -165,20 +158,23 @@ Format:
   },
   "evidence": [],
   "reason": ""
-}"""
+}
+
+Keterangan:
+- "fraud_flags": bernilai true jika indikator tersebut terdeteksi dalam transkrip percakapan, jika tidak bernilai false.
+- "evidence": daftar kutipan kalimat langsung dari transkrip yang menjadi bukti adanya indikator kecurangan tersebut. Jika tidak ada, biarkan kosong [].
+- "reason": penjelasan singkat dan jelas mengapa indikator tersebut terdeteksi atau tidak terdeteksi."""
 
 _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "system_prompt": _DEFAULT_SYSTEM_PROMPT,
     "fraud_categories": [
-        {"key": "FRAUD_LEASING_REDIRECTION", "label": "Leasing Redirection", "description": "Redirecting customer to competitor"},
-        {"key": "FRAUD_PERSONAL_CONTACT", "label": "Personal Contact", "description": "Sharing personal contact for off-system deals"},
-        {"key": "FRAUD_OUTSIDE_PROCESS", "label": "Outside Process", "description": "Transaction outside official process"},
-        {"key": "FRAUD_DATA_MANIPULATION", "label": "Data Manipulation", "description": "Falsifying customer data or documents"},
-        {"key": "FRAUD_PAYMENT_DIVERSION", "label": "Payment Diversion", "description": "Directing payment to personal accounts"},
+        {"key": "leasing_redirection", "label": "Leasing Redirection", "description": "Agen mengarahkan pelanggan ke perusahaan leasing lain", "classification": "FRAUD"},
+        {"key": "personal_contact", "label": "Personal Contact", "description": "Agen membagikan kontak pribadi untuk transaksi luar sistem resmi", "classification": "SUSPICIOUS"},
+        {"key": "outside_process", "label": "Outside Process", "description": "Transaksi atau negosiasi di luar proses resmi", "classification": "SUSPICIOUS"},
+        {"key": "data_manipulation", "label": "Data Manipulation", "description": "Agen memanipulasi atau memalsukan data pelanggan", "classification": "FRAUD"},
+        {"key": "payment_diversion", "label": "Payment Diversion", "description": "Agen mengarahkan pembayaran ke rekening pribadi atau tidak resmi", "classification": "FRAUD"},
     ],
-    "alert_verdicts": ["FRAUD_LEASING_REDIRECTION", "FRAUD_PERSONAL_CONTACT",
-                       "FRAUD_OUTSIDE_PROCESS", "FRAUD_DATA_MANIPULATION",
-                       "FRAUD_PAYMENT_DIVERSION", "SUSPICIOUS"],
+    "alert_verdicts": ["FRAUD", "SUSPICIOUS"],
     "device_name": "VoiceGuard-Store-01",
     # These mirror .env but can be overridden at runtime
     "stt_mode": "auto",

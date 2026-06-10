@@ -238,7 +238,6 @@ export function Playback() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
                           {alert.verdict}
                         </span>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{alert.confidence}%</span>
                         {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
                       </div>
                       <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
@@ -267,11 +266,12 @@ export function Playback() {
                   {selectedAlert ? (
                     <div>
                       <div style={{
-                        fontSize: 13, fontWeight: 700,
+                        fontSize: 13,
+                        fontWeight: 700,
                         color: VERDICT_COLOR[selectedAlert.verdict] || 'var(--text-secondary)',
                         marginBottom: 4,
                       }}>
-                        {selectedAlert.verdict === 'FRAUD' ? '🚨' : selectedAlert.verdict === 'SUSPICIOUS' ? '⚠️' : '✓'} {selectedAlert.verdict} — {selectedAlert.confidence}% confidence
+                        {selectedAlert.verdict === 'FRAUD' ? '🚨' : selectedAlert.verdict === 'SUSPICIOUS' ? '⚠️' : '✓'} {selectedAlert.verdict}
                         {activeContinuousRec && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: 'var(--accent)' }}>(Continuous Mode)</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>

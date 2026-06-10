@@ -25,19 +25,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────
 
 class FraudResult:
-    ALERT_VERDICTS = {
-        "FRAUD_LEASING_REDIRECTION",
-        "FRAUD_PERSONAL_CONTACT",
-        "FRAUD_OUTSIDE_PROCESS",
-        "FRAUD_DATA_MANIPULATION",
-        "FRAUD_PAYMENT_DIVERSION",
-        "SUSPICIOUS",
-    }
-
-    def __init__(self, raw: Dict[str, Any], mode_used: str, elapsed_ms: int, error: Optional[str] = None):
-        self.classification = raw.get("classification", "NORMAL")
-        self.confidence = int(raw.get("confidence", 0))
-        self.risk_level = raw.get("risk_level", "low")
+    def __init__(self, raw: Dict[str, Any], mode_used: str, elapsed_ms: int, error: Optional[str] = None, mapping: Optional[Dict[str, str]] = None):
         self.fraud_flags = raw.get("fraud_flags", {})
         self.evidence = raw.get("evidence", [])
         self.reason = raw.get("reason", "")
@@ -45,17 +33,51 @@ class FraudResult:
         self.elapsed_ms = elapsed_ms
         self.error = error
         self.raw = raw
+        self.confidence = 100  # Default to 100 for schema compatibility
+
+        if error:
+            self.classification = "ERROR"
+            self.risk_level = "low"
+        else:
+            default_mapping = {
+                "leasing_redirection": "FRAUD",
+                "personal_contact": "SUSPICIOUS",
+                "outside_process": "SUSPICIOUS",
+                "data_manipulation": "FRAUD",
+                "payment_diversion": "FRAUD"
+            }
+            active_mapping = mapping if mapping is not None else default_mapping
+            
+            has_fraud = False
+            has_suspicious = False
+            
+            for k, is_active in self.fraud_flags.items():
+                if is_active:
+                    norm_key = k.replace("FRAUD_", "").replace("SUSPICIOUS_", "").lower()
+                    mapped_cls = active_mapping.get(norm_key, "NORMAL").upper()
+                    if mapped_cls == "FRAUD":
+                        has_fraud = True
+                    elif mapped_cls == "SUSPICIOUS":
+                        has_suspicious = True
+            
+            if has_fraud:
+                self.classification = "FRAUD"
+                self.risk_level = "high"
+            elif has_suspicious:
+                self.classification = "SUSPICIOUS"
+                self.risk_level = "medium"
+            else:
+                self.classification = "NORMAL"
+                self.risk_level = "low"
 
     @property
     def is_alert(self) -> bool:
-        return self.classification in self.ALERT_VERDICTS
+        return self.classification in {"FRAUD", "SUSPICIOUS"}
 
     @property
     def verdict(self) -> str:
         """Simplified verdict for DB/UI."""
-        if "FRAUD" in self.classification:
-            return "FRAUD"
-        return self.classification  # NORMAL, SUSPICIOUS, ERROR
+        return self.classification  # NORMAL, SUSPICIOUS, FRAUD, ERROR
 
     @property
     def active_flags(self) -> List[str]:
@@ -77,8 +99,7 @@ class FraudResult:
 
 def _error_result(mode_used: str, elapsed_ms: int, reason: str) -> FraudResult:
     return FraudResult(
-        raw={"classification": "ERROR", "confidence": 0, "risk_level": "low",
-             "fraud_flags": {}, "evidence": [], "reason": reason},
+        raw={"fraud_flags": {}, "evidence": [], "reason": reason},
         mode_used=mode_used, elapsed_ms=elapsed_ms, error=reason,
     )
 
@@ -112,7 +133,7 @@ class GroqLLM:
         self._model = model
         self._timeout = timeout
 
-    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None, mapping: Optional[Dict[str, str]] = None) -> FraudResult:
         t0 = time.time()
         try:
             messages = [
@@ -133,7 +154,7 @@ class GroqLLM:
             elapsed = int((time.time() - t0) * 1000)
             parsed = _extract_json(raw_text)
             if parsed:
-                return FraudResult(raw=parsed, mode_used="api", elapsed_ms=elapsed)
+                return FraudResult(raw=parsed, mode_used="api", elapsed_ms=elapsed, mapping=mapping)
             return _error_result("api", elapsed, f"Invalid JSON from LLM: {raw_text[:80]}")
         except Exception as e:
             elapsed = int((time.time() - t0) * 1000)
@@ -158,19 +179,19 @@ class LocalLLM:
         self._endpoint_type = endpoint_type
         self._timeout = timeout
 
-    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None, mapping: Optional[Dict[str, str]] = None) -> FraudResult:
         t0 = time.time()
         try:
             if self._endpoint_type == "ollama":
-                return self._analyze_ollama(transcript, system_prompt, t0, context=context)
+                return self._analyze_ollama(transcript, system_prompt, t0, context=context, mapping=mapping)
             else:
-                return self._analyze_openai(transcript, system_prompt, t0, context=context)
+                return self._analyze_openai(transcript, system_prompt, t0, context=context, mapping=mapping)
         except Exception as e:
             elapsed = int((time.time() - t0) * 1000)
             logger.error(f"[LLM] Local error: {e}")
             return _error_result("local", elapsed, str(e))
 
-    def _analyze_ollama(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None) -> FraudResult:
+    def _analyze_ollama(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None, mapping: Optional[Dict[str, str]] = None) -> FraudResult:
         prompt = system_prompt + "\n\n"
         if context:
             prompt += f"Recent Conversation Context:\n{context}\n\n"
@@ -188,10 +209,10 @@ class LocalLLM:
         elapsed = int((time.time() - t0) * 1000)
         parsed = _extract_json(raw_text)
         if parsed:
-            return FraudResult(raw=parsed, mode_used="local", elapsed_ms=elapsed)
+            return FraudResult(raw=parsed, mode_used="local", elapsed_ms=elapsed, mapping=mapping)
         return _error_result("local", elapsed, f"Invalid JSON: {raw_text[:80]}")
 
-    def _analyze_openai(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None) -> FraudResult:
+    def _analyze_openai(self, transcript: str, system_prompt: str, t0: float, context: Optional[str] = None, mapping: Optional[Dict[str, str]] = None) -> FraudResult:
         with httpx.Client(timeout=self._timeout) as client:
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -215,7 +236,7 @@ class LocalLLM:
         elapsed = int((time.time() - t0) * 1000)
         parsed = _extract_json(raw_text)
         if parsed:
-            return FraudResult(raw=parsed, mode_used="local", elapsed_ms=elapsed)
+            return FraudResult(raw=parsed, mode_used="local", elapsed_ms=elapsed, mapping=mapping)
         return _error_result("local", elapsed, f"Invalid JSON: {raw_text[:80]}")
 
 
@@ -250,25 +271,25 @@ class LLMEngine:
             timeout=timeout,
         )
 
-    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None) -> FraudResult:
+    def analyze(self, transcript: str, system_prompt: str, context: Optional[str] = None, mapping: Optional[Dict[str, str]] = None) -> FraudResult:
         mode = self._mode
 
         if mode == "api":
             if self._groq:
-                return self._groq.analyze(transcript, system_prompt, context=context)
+                return self._groq.analyze(transcript, system_prompt, context=context, mapping=mapping)
             return _error_result("api", 0, "Groq not configured")
 
         if mode == "local":
-            return self._local.analyze(transcript, system_prompt, context=context)
+            return self._local.analyze(transcript, system_prompt, context=context, mapping=mapping)
 
         # auto: try API first, fallback to local
         if self._groq:
-            result = self._groq.analyze(transcript, system_prompt, context=context)
+            result = self._groq.analyze(transcript, system_prompt, context=context, mapping=mapping)
             if result.error is None:
                 return result
             logger.warning(f"[LLM] API failed ({result.error}), trying local fallback")
 
-        return self._local.analyze(transcript, system_prompt, context=context)
+        return self._local.analyze(transcript, system_prompt, context=context, mapping=mapping)
 
     def update_mode(self, mode: str) -> None:
         self._mode = mode

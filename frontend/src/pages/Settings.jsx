@@ -114,7 +114,7 @@ export function Settings() {
           {activeTab === 'LLM' && <LLMTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'Recording' && <RecordingTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'Notifications' && <NotificationsTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'System Prompt' && <PromptTab prompt={prompt} setPrompt={setPrompt} onSave={savePrompt} saving={saving} config={config} />}
+          {activeTab === 'System Prompt' && <PromptTab prompt={prompt} setPrompt={setPrompt} onSave={savePrompt} saving={saving} config={config} onSaveConfig={save} />}
           {activeTab === 'Security' && <SecurityTab />}
         </div>
       </div>
@@ -529,20 +529,36 @@ function NotificationsTab({ config, onSave, saving }) {
   )
 }
 
-function PromptTab({ prompt, setPrompt, onSave, saving, config }) {
+function PromptTab({ prompt, setPrompt, onSave, saving, config, onSaveConfig }) {
   const [categories, setCategories] = useState(config.fraud_categories || [])
   const [newCatKey, setNewCatKey] = useState('')
   const [newCatLabel, setNewCatLabel] = useState('')
+  const [newCatClass, setNewCatClass] = useState('FRAUD')
 
   const addCategory = () => {
     if (!newCatKey || !newCatLabel) return
-    setCategories(prev => [...prev, { key: newCatKey.toUpperCase(), label: newCatLabel, description: '' }])
+    const key = newCatKey.toLowerCase().replace(/[^a-z0-9_]/g, '')
+    if (categories.some(c => c.key === key)) {
+      alert('Category key already exists')
+      return
+    }
+    setCategories(prev => [...prev, { key, label: newCatLabel, description: '', classification: newCatClass }])
     setNewCatKey('')
     setNewCatLabel('')
   }
 
   const removeCategory = (key) => {
     setCategories(prev => prev.filter(c => c.key !== key))
+  }
+
+  const updateCategoryClass = (key, val) => {
+    setCategories(prev => prev.map(c => c.key === key ? { ...c, classification: val } : c))
+  }
+
+  const handleSaveCategories = () => {
+    if (onSaveConfig) {
+      onSaveConfig({ fraud_categories: categories })
+    }
   }
 
   return (
@@ -564,29 +580,57 @@ function PromptTab({ prompt, setPrompt, onSave, saving, config }) {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Fraud Categories</h3>
+        <h3 style={{ marginBottom: 12 }}>Fraud Categories & Verdict Mapping</h3>
         <div className="form-hint" style={{ marginBottom: 16 }}>
-          These categories define what the AI should look for. Add custom categories as needed.
+          These categories define what the AI should look for. You can dynamically configure which category triggers which verdict (Normal, Suspicious, or Fraud).
         </div>
 
-        {categories.map(cat => (
-          <div key={cat.key} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 0', borderBottom: '1px solid var(--border)',
-          }}>
-            <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>{cat.key}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{cat.label}</div>
-              {cat.description && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{cat.description}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {categories.map(cat => (
+            <div key={cat.key} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 0', borderBottom: '1px solid var(--border)',
+            }}>
+              <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, minWidth: 120 }}>{cat.key}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{cat.label}</div>
+                {cat.description && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{cat.description}</div>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <select 
+                  className="form-select" 
+                  value={cat.classification || 'FRAUD'} 
+                  onChange={e => updateCategoryClass(cat.key, e.target.value)}
+                  style={{ width: 130, padding: '4px 8px', fontSize: 12 }}
+                >
+                  <option value="NORMAL">NORMAL (Clear)</option>
+                  <option value="SUSPICIOUS">SUSPICIOUS</option>
+                  <option value="FRAUD">FRAUD</option>
+                </select>
+                <button className="btn btn-danger btn-sm" onClick={() => removeCategory(cat.key)}>Remove</button>
+              </div>
             </div>
-            <button className="btn btn-danger btn-sm" onClick={() => removeCategory(cat.key)}>Remove</button>
-          </div>
-        ))}
+          ))}
+        </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <input className="form-input" placeholder="KEY (e.g. FRAUD_BRIBE)" value={newCatKey} onChange={e => setNewCatKey(e.target.value)} style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+          <input className="form-input" placeholder="key (e.g. bribing)" value={newCatKey} onChange={e => setNewCatKey(e.target.value)} style={{ flex: 1 }} />
           <input className="form-input" placeholder="Label" value={newCatLabel} onChange={e => setNewCatLabel(e.target.value)} style={{ flex: 1 }} />
+          <select 
+            className="form-select" 
+            value={newCatClass} 
+            onChange={e => setNewCatClass(e.target.value)}
+            style={{ width: 130 }}
+          >
+            <option value="NORMAL">NORMAL</option>
+            <option value="SUSPICIOUS">SUSPICIOUS</option>
+            <option value="FRAUD">FRAUD</option>
+          </select>
           <button className="btn btn-primary" onClick={addCategory}>Add</button>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+          <SaveBtn saving={saving} onClick={handleSaveCategories} />
         </div>
       </div>
     </>

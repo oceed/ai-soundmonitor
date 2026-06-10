@@ -172,7 +172,7 @@ export function Timeline({
               className="timeline-marker-hit-area"
               style={{ left: `${marker.position * 100}%` }}
               onClick={(e) => { e.stopPropagation(); onAlertClick?.(marker) }}
-              title={`${format(new Date(marker.timestamp), 'HH:mm:ss')} — ${marker.verdict} (${marker.confidence}%)\n"${marker.transcript || ''}"`}
+              title={`${format(new Date(marker.timestamp), 'HH:mm:ss')} — ${marker.verdict}\n"${marker.transcript || ''}"`}
             >
               {/* Visual dot */}
               <div style={{

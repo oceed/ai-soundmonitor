@@ -390,6 +390,16 @@ class PipelineOrchestrator:
 
             self._emit("llm_progress", {"segment_no": seg_no, "status": "analyzing"})
             
+            # Get dynamic categories mapping
+            categories = self._rc.get("fraud_categories", [])
+            mapping = {}
+            for cat in categories:
+                raw_key = cat.get("key", "")
+                key = raw_key.replace("FRAUD_", "").replace("SUSPICIOUS_", "").lower()
+                default_cls = "SUSPICIOUS" if key in ("personal_contact", "outside_process") else "FRAUD"
+                cls = cat.get("classification", default_cls).upper()
+                mapping[key] = cls
+
             # API Cost Optimization: bypass LLM for short/trivial transcripts
             text_cleaned = stt.text.strip().lower()
             words = text_cleaned.split()
@@ -398,21 +408,13 @@ class PipelineOrchestrator:
                 from pipeline.llm import FraudResult
                 fraud_result = FraudResult(
                     raw={
-                        "classification": "NORMAL",
-                        "confidence": 100,
-                        "risk_level": "low",
-                        "fraud_flags": {
-                            "leasing_redirection": False,
-                            "personal_contact": False,
-                            "outside_process": False,
-                            "data_manipulation": False,
-                            "payment_diversion": False
-                        },
+                        "fraud_flags": {k: False for k in mapping.keys()},
                         "evidence": [],
                         "reason": "Fragment too brief to evaluate."
                     },
                     mode_used="local_bypass",
-                    elapsed_ms=0
+                    elapsed_ms=0,
+                    mapping=mapping
                 )
             else:
                 system_prompt = self._rc.get("system_prompt", "")
@@ -431,7 +433,7 @@ class PipelineOrchestrator:
                     except Exception as e:
                         logger.error(f"[Orchestrator] Error fetching recent segments for context: {e}")
                 
-                fraud_result = self._llm.analyze(stt.text, system_prompt, context=context_str)
+                fraud_result = self._llm.analyze(stt.text, system_prompt, context=context_str, mapping=mapping)
 
             # Update stats
             with self._lock:

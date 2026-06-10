@@ -157,7 +157,6 @@ function AlertRow({ alert, expanded, onToggle, onDelete }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{alert.verdict}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{alert.confidence}%</span>
             {alert.flags?.slice(0, 2).map(f => (
               <span key={f} className="badge badge-fraud" style={{ fontSize: 9 }}>{f.replace(/_/g, ' ')}</span>
             ))}
@@ -215,20 +214,6 @@ function AlertRow({ alert, expanded, onToggle, onDelete }) {
               ))}
             </div>
           )}
-
-          {/* Confidence bar */}
-          <div className="confidence-bar" style={{ marginBottom: 16 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 80 }}>Confidence</span>
-            <div className="confidence-track">
-              <div
-                className={`confidence-fill confidence-${alert.verdict?.toLowerCase()}`}
-                style={{ width: `${alert.confidence}%` }}
-              />
-            </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: cfg.color, minWidth: 40 }}>
-              {alert.confidence}%
-            </span>
-          </div>
 
           {/* Audio player */}
           {alert.recording_ready && (

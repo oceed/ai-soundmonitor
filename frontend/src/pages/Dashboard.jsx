@@ -220,13 +220,6 @@ function FeedItem({ item, isNew, onPlayClick }) {
           <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
             {cfg.icon} {item.classification || item.verdict}
           </span>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: cfg.color, opacity: 0.75,
-            fontFamily: 'var(--font-mono)',
-          }}>
-            {item.confidence}%
-          </span>
           {item.flags?.map(f => (
             <span key={f} className="badge badge-fraud" style={{ fontSize: 9, padding: '1px 6px' }}>{f}</span>
           ))}
@@ -279,18 +272,6 @@ function FeedItem({ item, isNew, onPlayClick }) {
         </div>
       )}
 
-      {/* Confidence bar */}
-      <div className="confidence-bar" style={{ marginTop: 7 }}>
-        <div className="confidence-track">
-          <div
-            className={`confidence-fill confidence-${item.verdict?.toLowerCase() === 'fraud' ? 'fraud' : item.verdict?.toLowerCase() === 'suspicious' ? 'suspicious' : 'normal'}`}
-            style={{ width: `${item.confidence}%` }}
-          />
-        </div>
-        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', minWidth: 28 }}>
-          {item.confidence}%
-        </span>
-      </div>
     </div>
   )
 }
@@ -345,7 +326,7 @@ function PlaybackModal({ item, onClose }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
-              {item.verdict} — {item.confidence}%
+              {item.verdict}
             </span>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
               {item.timestamp ? format(new Date(item.timestamp), 'HH:mm:ss') : ''}
@@ -517,7 +498,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         ))
         addToast({
           type:     event.verdict === 'FRAUD' ? 'fraud' : 'warning',
-          title:    `${event.verdict === 'FRAUD' ? '⚠ FRAUD DETECTED' : '◈ SUSPICIOUS'} — ${event.confidence}%`,
+          title:    `${event.verdict === 'FRAUD' ? '⚠ FRAUD DETECTED' : '◈ SUSPICIOUS'}`,
           body:     event.reason?.slice(0, 120) || '',
           duration: 8000,
         })
