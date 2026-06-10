@@ -26,11 +26,37 @@ logger = logging.getLogger(__name__)
 
 class STTResult:
     def __init__(self, text: str, mode_used: str, elapsed_ms: int, error: Optional[str] = None):
-        self.text = text.strip()
+        cleaned_text = text.strip()
+        
+        # Filter out common Whisper hallucinations on silence/noise
+        hallucination_patterns = [
+            "ありがとうございました",
+            "ご視聴ありがとうございました",
+            "ご視聴いただきありがとうございました",
+            "チャンネル登録",
+            "thank you for watching",
+            "subtitles by",
+        ]
+        
+        lower_text = cleaned_text.lower()
+        is_hallucination = False
+        for pat in hallucination_patterns:
+            if pat in lower_text:
+                is_hallucination = True
+                break
+                
+        if lower_text in ("thank you.", "thank you", "you"):
+            is_hallucination = True
+            
+        if is_hallucination:
+            logger.info(f"[STT] Filtered out Whisper hallucination: '{cleaned_text}'")
+            cleaned_text = ""
+            
+        self.text = cleaned_text
         self.mode_used = mode_used
         self.elapsed_ms = elapsed_ms
         self.error = error
-        self.success = error is None and bool(text)
+        self.success = error is None and bool(cleaned_text)
 
 
 # ─────────────────────────────────────────────────────────
@@ -52,6 +78,7 @@ class GroqSTT:
                 file=("audio.wav", wav_bytes, "audio/wav"),
                 model=self._model,
                 response_format="text",
+                language="id",
                 timeout=self._timeout,
             )
             text = result if isinstance(result, str) else getattr(result, "text", "")
