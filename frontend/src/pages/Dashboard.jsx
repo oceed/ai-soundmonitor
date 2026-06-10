@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { AudioVisualizer } from '../components/AudioVisualizer'
 import { format } from 'date-fns'
-import { startPipeline, stopPipeline, getSegments } from '../api/config'
+import { startPipeline, stopPipeline, getSegments, getSessions } from '../api/config'
 import { getRecordingStreamUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 
@@ -91,12 +91,12 @@ function LatencyGraph({ values = [], color = 'var(--accent)', label = '' }) {
 }
 
 /* ─── System info panel ─── */
-function SystemPanel({ pipelineStatus, feed }) {
+function SystemPanel({ pipelineStatus, feed, activeSessionId }) {
   const sttTimes = feed.filter(f => f.stt_ms > 0).map(f => f.stt_ms).slice(-20)
   const llmTimes = feed.filter(f => f.llm_ms > 0).map(f => f.llm_ms).slice(-20)
 
   const rows = [
-    { label: 'Session', value: `#${pipelineStatus?.stats?.session_id || '—'}` },
+    { label: 'Session', value: `#${activeSessionId || '—'}` },
     { label: 'Active Mic', value: pipelineStatus?.stats?.active_mic_name || '—' },
     { label: 'STT Mode', value: pipelineStatus?.stats?.stt_mode || '—', mono: true },
     { label: 'LLM Mode', value: pipelineStatus?.stats?.llm_mode || '—', mono: true },
@@ -402,30 +402,53 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
   const [vadState, setVadState] = useState('silence')
   const [feed, setFeed] = useState([])
   const [stats, setStats] = useState({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
+  const [activeSessionId, setActiveSessionId] = useState(null)
   const [lastVerdict, setLastVerdict] = useState(null)
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const [playingRecording, setPlayingRecording] = useState(null)
   const feedRef = useRef(null)
   const { addToast } = useToast()
 
-  /* Sync stats from pipeline poll */
+  /* Sync stats and session ID from pipeline status, or fetch latest session from database */
   useEffect(() => {
-    if (pipelineStatus?.stats) {
+    if (pipelineStatus?.running && pipelineStatus?.stats?.session_id) {
+      setActiveSessionId(pipelineStatus.stats.session_id)
       setStats({
         FRAUD:      pipelineStatus.stats.FRAUD      || 0,
         SUSPICIOUS: pipelineStatus.stats.SUSPICIOUS || 0,
         NORMAL:     pipelineStatus.stats.NORMAL     || 0,
         segments:   pipelineStatus.stats.segments   || 0,
       })
+    } else {
+      getSessions({ limit: 1 })
+        .then(data => {
+          if (data?.items && data.items.length > 0) {
+            const latest = data.items[0]
+            setActiveSessionId(latest.id)
+            setStats({
+              FRAUD:      latest.fraud_count      || 0,
+              SUSPICIOUS: latest.suspicious_count || 0,
+              NORMAL:     latest.clear_count      || 0,
+              segments:   latest.total_segments   || 0,
+            })
+          } else {
+            setActiveSessionId(null)
+            setStats({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
+          }
+        })
+        .catch(err => {
+          console.error('Failed to load latest session:', err)
+          setActiveSessionId(null)
+          setStats({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
+        })
     }
   }, [pipelineStatus])
 
-  /* Load initial feed when session changes */
+  /* Load initial feed when activeSessionId changes */
   useEffect(() => {
-    const sessionId = pipelineStatus?.stats?.session_id
-    if (!sessionId) { setFeed([]); return }
+    if (!activeSessionId) { setFeed([]); return }
 
-    getSegments({ session_id: sessionId, limit: MAX_FEED })
+    getSegments({ session_id: activeSessionId, limit: MAX_FEED })
       .then(data => {
         if (data?.items) {
           setFeed(data.items.map(s => ({
@@ -447,7 +470,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         }
       })
       .catch(err => console.error('Failed to load segments:', err))
-  }, [pipelineStatus?.stats?.session_id])
+  }, [activeSessionId])
 
   /* WebSocket event processor */
   useEffect(() => {
@@ -553,7 +576,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             Live Monitor
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-            Real-time fraud detection · Session #{pipelineStatus?.stats?.session_id || '—'}
+            Real-time fraud detection · Session #{activeSessionId || '—'}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -667,7 +690,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
           <VerdictDistribution stats={stats} />
 
           {/* System info */}
-          <SystemPanel pipelineStatus={pipelineStatus} feed={feed} />
+          <SystemPanel pipelineStatus={pipelineStatus} feed={feed} activeSessionId={activeSessionId} />
 
           {/* Recent bad events */}
           {recentBad.length > 0 && (
