@@ -238,7 +238,6 @@ export function Playback() {
                       onClick={() => handleAlertClick(alert)}
                       className={`playback-event-item ${isSelected ? 'selected' : ''}`}
                       style={{
-                        borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
                         border: `1px solid ${isSelected ? VERDICT_COLOR[alert.verdict] || 'var(--border-active)' : 'var(--border)'}`,
                         borderLeft: `3px solid ${VERDICT_COLOR[alert.verdict] || 'var(--border)'}`,
                       }}
