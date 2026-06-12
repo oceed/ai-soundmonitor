@@ -191,3 +191,13 @@ async def device_watcher_task():
             "added_nodes": list(added),
             "removed_nodes": list(removed),
         })
+
+        # Trigger orchestrator capture reload (runs in executor to prevent event loop blocking)
+        try:
+            from main import get_orchestrator
+            orch = get_orchestrator()
+            if orch and orch.is_running:
+                logger.info("[DeviceWatcher] Device change detected, triggering audio capture reload...")
+                await loop.run_in_executor(None, orch.reload_config, True)
+        except Exception as e:
+            logger.warning("[DeviceWatcher] Failed to trigger orchestrator capture reload: %s", e)

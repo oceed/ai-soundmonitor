@@ -153,7 +153,7 @@ class PipelineOrchestrator:
         self._emit("pipeline_status", {"running": False, "session_id": self._session_id})
         logger.info("[Orchestrator] Pipeline stopped")
 
-    def reload_config(self) -> None:
+    def reload_config(self, force_restart_capture: bool = False) -> None:
         """Dynamically updates running services with the latest config from runtime_config."""
         logger.info("[Orchestrator] Dynamic configuration reload triggered")
         with self._lock:
@@ -177,8 +177,8 @@ class PipelineOrchestrator:
                 current_device = self._capture._device_index
                 new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
 
-                if current_device != new_device:
-                    logger.info(f"[Orchestrator] Audio device index changed from {current_device} to {new_device}. Restarting audio capture...")
+                if current_device != new_device or force_restart_capture:
+                    logger.info(f"[Orchestrator] Restarting audio capture (device changed or forced reload: current_device={current_device}, new_device={new_device}, forced={force_restart_capture})...")
                     self._capture.stop()
                     self._init_capture()
                     self._capture.start()

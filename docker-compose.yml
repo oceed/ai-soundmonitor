@@ -20,10 +20,12 @@ services:
       - STORAGE_PATH=/app/storage
       - DATABASE_PATH=/app/storage/fraud_detection.db
     volumes:
+      - ./backend:/app
       - ./storage:/app/storage
       - /dev/snd:/dev/snd:rslave
       - /dev/bus/usb:/dev/bus/usb:rslave
       - /usr/share/alsa:/usr/share/alsa:ro
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --log-level info --reload
     ports:
       - "${BACKEND_PORT:-8001}:8001"
     # Required for dynamic ALSA audio access (hotplug)

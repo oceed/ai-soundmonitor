@@ -177,61 +177,127 @@ class AudioCapture:
         arr = np.array(shorts, dtype=np.float32)
         return float(np.sqrt(np.mean(arr ** 2)))
 
-    def _resolve_device_index(self, pa) -> Optional[int]:
-        """Auto-detect best mic if device_index == -1."""
+    def _find_working_stream(self, pa) -> Tuple[Any, int, int, int, str]:
+        """
+        Attempts to open a working PyAudio stream.
+        Tries the configured device index first (if >= 0).
+        If that fails (or index is -1), tries other devices in priority order:
+        1. OBSBOT devices
+        2. Default device
+        3. USB devices
+        4. Other input devices
+        
+        Returns:
+            Tuple of (stream, device_index, opened_rate, opened_channels, device_name)
+            or (None, -1, 0, 0, "") if no device could be opened.
+        """
+        import pyaudio
+
+        # 1. Determine target index from config
         with self._lock:
-            idx = self._device_index
+            config_idx = self._device_index
 
-        if idx >= 0:
+        # 2. Get default device index if possible
+        default_idx = -1
+        try:
+            default_info = pa.get_default_input_device_info()
+            default_idx = default_info.get("index", -1)
+        except Exception:
+            pass
+
+        # 3. Build prioritized list of devices to try
+        # Each item: (priority, index, name)
+        device_candidates = []
+
+        # If user explicitly chose a device, give it highest priority (e.g. 1000)
+        if config_idx >= 0:
             try:
-                dev = pa.get_device_info_by_index(idx)
-                self._actual_device_name = dev.get("name", f"Device {idx}")
-                return idx
-            except Exception as e:
-                logger.warning(f"[Capture] Failed to get device info for index {idx}: {e}. Falling back to auto-detect.")
+                dev_info = pa.get_device_info_by_index(config_idx)
+                if dev_info.get("maxInputChannels", 0) > 0:
+                    name = dev_info.get("name", f"Device {config_idx}")
+                    device_candidates.append((1000, config_idx, name))
+            except Exception:
+                logger.warning(f"[Capture] Configured device index {config_idx} not found or invalid.")
 
-        # Auto: prefer USB/OBSBOT mic
+        # Gather other devices
         n = pa.get_device_count()
-        # 1. Search specifically for OBSBOT devices first
         for i in range(n):
+            # Skip if it is the configured index since we already added/tried it
+            if i == config_idx:
+                continue
             try:
-                dev = pa.get_device_info_by_index(i)
-                if dev.get("maxInputChannels", 0) > 0:
-                    name = dev.get("name", "").lower()
-                    if "obsbot" in name:
-                        self._actual_device_name = dev.get("name", f"Device {i}")
-                        logger.info(f"[Capture] Auto-selected OBSBOT device: {self._actual_device_name} [{i}]")
-                        return i
+                dev_info = pa.get_device_info_by_index(i)
+                if dev_info.get("maxInputChannels", 0) <= 0:
+                    continue
+                name = dev_info.get("name", "").lower()
+
+                # Assign priority
+                if "obsbot" in name:
+                    priority = 100
+                elif i == default_idx:
+                    priority = 80
+                elif any(k in name for k in ["usb", "cam", "webcam", "uvc"]):
+                    priority = 60
+                else:
+                    priority = 10
+
+                device_candidates.append((priority, i, dev_info.get("name", f"Device {i}")))
             except Exception:
                 continue
 
-        # 2. Search for other USB input devices
-        for i in range(n):
-            try:
-                dev = pa.get_device_info_by_index(i)
-                if dev.get("maxInputChannels", 0) > 0:
-                    name = dev.get("name", "").lower()
-                    if any(k in name for k in ["usb", "cam", "webcam", "uvc"]):
-                        self._actual_device_name = dev.get("name", f"Device {i}")
-                        logger.info(f"[Capture] Auto-selected USB device: {self._actual_device_name} [{i}]")
-                        return i
-            except Exception:
-                continue
+        # Sort candidates by priority descending
+        device_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        # 3. Search for any other available input device
-        for i in range(n):
+        # 4. Try opening a stream on these devices in order
+        for priority, dev_idx, dev_name in device_candidates:
+            # Get default rate for this device
+            dev_default_rate = 16000
             try:
-                dev = pa.get_device_info_by_index(i)
-                if dev.get("maxInputChannels", 0) > 0:
-                    self._actual_device_name = dev.get("name", f"Device {i}")
-                    logger.info(f"[Capture] Auto-selected device: {self._actual_device_name} [{i}]")
-                    return i
+                dev_info = pa.get_device_info_by_index(dev_idx)
+                dev_default_rate = int(dev_info.get("defaultSampleRate", 16000))
             except Exception:
-                continue
+                pass
 
-        # Fallback: default device
-        self._actual_device_name = "Default Microphone"
-        return None
+            # Sample rates to try:
+            rates_to_try = [self._sample_rate]
+            if dev_default_rate not in rates_to_try:
+                rates_to_try.append(dev_default_rate)
+            for r in [44100, 48000, 32000, 8000, 22050, 11025]:
+                if r not in rates_to_try:
+                    rates_to_try.append(r)
+
+            # Channels to try:
+            channels_to_try = [self._channels]
+            if 1 not in channels_to_try:
+                channels_to_try.append(1)
+            if 2 not in channels_to_try:
+                channels_to_try.append(2)
+
+            for ch in channels_to_try:
+                for rate in rates_to_try:
+                    try:
+                        trial_chunk_size = self._chunk_size
+                        if rate != self._sample_rate:
+                            trial_chunk_size = int(round(self._chunk_size * (rate / self._sample_rate)))
+
+                        logger.debug(f"[Capture] Trying device '{dev_name}' [{dev_idx}] with rate={rate}, channels={ch}, chunk_size={trial_chunk_size}")
+
+                        stream = pa.open(
+                            format=pyaudio.paInt16,
+                            channels=ch,
+                            rate=rate,
+                            input=True,
+                            input_device_index=dev_idx,
+                            frames_per_buffer=trial_chunk_size,
+                        )
+                        # Succeeded! Return all details
+                        logger.info(f"[Capture] Successfully opened device '{dev_name}' [{dev_idx}] (rate: {rate} Hz, channels: {ch})")
+                        return stream, dev_idx, rate, ch, dev_name
+                    except Exception as e:
+                        logger.debug(f"[Capture] Failed to open device '{dev_name}' [{dev_idx}] with rate={rate}, channels={ch}: {e}")
+                        continue
+
+        return None, -1, 0, 0, ""
 
     def _capture_loop(self) -> None:
         try:
@@ -240,177 +306,164 @@ class AudioCapture:
             logger.error("[Capture] pyaudio not installed!")
             return
 
-        pa = pyaudio.PyAudio()
-        device_index = self._resolve_device_index(pa)
-
-        # Determine the supported sample rate
-        supported_rates = [self._sample_rate, 44100, 48000, 32000, 8000]
-        device_rate = self._sample_rate
-
-        try:
-            if device_index is None or device_index < 0:
-                dev_info = pa.get_default_input_device_info()
-            else:
-                dev_info = pa.get_device_info_by_index(device_index)
-            
-            default_rate = int(dev_info.get("defaultSampleRate", 0))
-            if default_rate > 0 and default_rate not in supported_rates:
-                supported_rates.insert(1, default_rate)
-        except Exception as e:
-            logger.warning(f"[Capture] Failed to query device default rate: {e}")
-
-        # Find first rate that is supported
-        for rate in supported_rates:
+        while self._running:
+            pa = None
+            stream = None
             try:
-                if pa.is_format_supported(
-                    rate=rate,
-                    input_device=device_index,
-                    input_channels=self._channels,
-                    input_format=pyaudio.paInt16
-                ):
-                    device_rate = rate
-                    break
-            except Exception:
-                continue
-        else:
-            logger.warning(f"[Capture] Could not confirm rate support, attempting default rate from device")
-            try:
-                if device_index is None or device_index < 0:
-                    dev_info = pa.get_default_input_device_info()
-                else:
-                    dev_info = pa.get_device_info_by_index(device_index)
-                device_rate = int(dev_info.get("defaultSampleRate", 16000))
-            except Exception:
-                device_rate = self._sample_rate
+                pa = pyaudio.PyAudio()
+                stream, dev_idx, device_rate, opened_channels, dev_name = self._find_working_stream(pa)
 
-        # Configure chunk sizes
-        device_chunk_size = self._chunk_size
-        needs_resampling = False
-        if device_rate != self._sample_rate:
-            device_chunk_size = int(round(self._chunk_size * (device_rate / self._sample_rate)))
-            needs_resampling = True
-            logger.info(f"[Capture] Resampling enabled: mic rate {device_rate} Hz -> target {self._sample_rate} Hz (chunk: {device_chunk_size} -> {self._chunk_size})")
-
-        try:
-            stream = pa.open(
-                format=pyaudio.paInt16,
-                channels=self._channels,
-                rate=device_rate,
-                input=True,
-                input_device_index=device_index,
-                frames_per_buffer=device_chunk_size,
-            )
-        except Exception as e:
-            logger.error(f"[Capture] Cannot open audio stream at {device_rate} Hz: {e}")
-            pa.terminate()
-            return
-
-        logger.info(f"[Capture] Microphone open: {self._actual_device_name} (rate: {device_rate} Hz)")
-
-        fps = self._sample_rate // self._chunk_size
-        speech_frames: List[bytes] = []
-        silence_frames = 0
-        consecutive_speech_frames = 0
-        is_recording = False
-        last_vad_state = "silence"
-
-        segment_start_mono = 0.0
-        try:
-            while self._running:
-                with self._lock:
-                    threshold = self._vad_threshold
-                    silence_limit = int(self._silence_duration * fps)
-                    min_frames = int(self._min_speech_duration * fps)
-                    max_frames = int(self._max_segment_duration * fps)
-                    vad = self._vad
-                    calibrating = self._calibrating
-                    calibration_limit = self._calibration_limit
-
-                data = stream.read(device_chunk_size, exception_on_overflow=False)
-                ts = time.monotonic()
-
-                # Resample to 16000 Hz if needed
-                if needs_resampling and data:
-                    try:
-                        shorts = np.frombuffer(data, dtype=np.int16)
-                        if len(shorts) > 1:
-                            x_old = np.linspace(0, len(shorts) - 1, num=len(shorts))
-                            x_new = np.linspace(0, len(shorts) - 1, num=self._chunk_size)
-                            resampled_shorts = np.interp(x_new, x_old, shorts).astype(np.int16)
-                            data = resampled_shorts.tobytes()
-                    except Exception as re:
-                        logger.error(f"[Capture] Resampling error: {re}")
-
-                # Feed ring buffer
-                self._ring_push(data, ts)
-
-                rms = self._get_rms(data)
-                if self._rms_cb:
-                    self._rms_cb(rms)
-
-                # VAD threshold auto-calibration
-                if calibrating:
-                    with self._lock:
-                        self._calibration_rms.append(rms)
-                        if len(self._calibration_rms) >= calibration_limit:
-                            self._calibrating = False
-                            avg_noise = float(np.mean(self._calibration_rms))
-                            # Set threshold to avg_noise * 1.5 + 80, but at least 150
-                            self._vad_threshold = max(150.0, avg_noise * 1.5 + 80.0)
-                            from pipeline.vad import create_vad
-                            self._vad = create_vad(use_silero=self._vad_use_silero, threshold=self._vad_threshold)
-                            logger.info(f"[Capture] Auto-calibrated EnergyVAD threshold to {self._vad_threshold:.1f} (noise floor: {avg_noise:.1f})")
-                            if self._vad_state_cb:
-                                self._vad_state_cb("calibrated", self._vad_threshold)
+                if stream is None:
+                    logger.error("[Capture] Could not open any audio input device. Retrying in 5 seconds...")
+                    pa.terminate()
+                    # Wait and retry if still running
+                    for _ in range(50):
+                        if not self._running:
+                            break
+                        time.sleep(0.1)
                     continue
 
-                is_speech = vad.is_speech(data)
+                # Update actual device name and index in self
+                with self._lock:
+                    self._actual_device_name = dev_name
 
-                if is_speech:
-                    consecutive_speech_frames += 1
-                    if not is_recording:
-                        # Require at least 2 consecutive speech frames (approx 64ms) to debounce noise spikes
-                        if consecutive_speech_frames >= 2:
-                            is_recording = True
-                            speech_frames = [data]
-                            segment_start_mono = ts - (self._chunk_size / self._sample_rate)
+                # Configure chunk sizes
+                device_chunk_size = self._chunk_size
+                needs_resampling = False
+                if device_rate != self._sample_rate:
+                    device_chunk_size = int(round(self._chunk_size * (device_rate / self._sample_rate)))
+                    needs_resampling = True
+                    logger.info(f"[Capture] Resampling enabled: mic rate {device_rate} Hz -> target {self._sample_rate} Hz (chunk: {device_chunk_size} -> {self._chunk_size})")
+
+                logger.info(f"[Capture] Microphone open: {self._actual_device_name} (rate: {device_rate} Hz, channels: {opened_channels})")
+
+                fps = self._sample_rate // self._chunk_size
+                speech_frames: List[bytes] = []
+                silence_frames = 0
+                consecutive_speech_frames = 0
+                is_recording = False
+                last_vad_state = "silence"
+
+                segment_start_mono = 0.0
+
+                while self._running:
+                    with self._lock:
+                        threshold = self._vad_threshold
+                        silence_limit = int(self._silence_duration * fps)
+                        min_frames = int(self._min_speech_duration * fps)
+                        max_frames = int(self._max_segment_duration * fps)
+                        vad = self._vad
+                        calibrating = self._calibrating
+                        calibration_limit = self._calibration_limit
+
+                    try:
+                        data = stream.read(device_chunk_size, exception_on_overflow=False)
+                    except Exception as stream_err:
+                        logger.error(f"[Capture] Stream read error: {stream_err}. Reconnecting stream...")
+                        break  # Break inner loop to reconnect
+
+                    ts = time.monotonic()
+
+                    # Process data (Downmix & Resample)
+                    if data:
+                        try:
+                            shorts = np.frombuffer(data, dtype=np.int16)
+                            # 1. Downmix to mono if stream opened in stereo
+                            if opened_channels == 2:
+                                if len(shorts) % 2 == 0:
+                                    shorts = shorts.reshape(-1, 2).mean(axis=1).astype(np.int16)
+                                else:
+                                    shorts = shorts[:-1].reshape(-1, 2).mean(axis=1).astype(np.int16)
+
+                            # 2. Resample if rate is different from target sample rate
+                            if needs_resampling and len(shorts) > 1:
+                                x_old = np.linspace(0, len(shorts) - 1, num=len(shorts))
+                                x_new = np.linspace(0, len(shorts) - 1, num=self._chunk_size)
+                                shorts = np.interp(x_new, x_old, shorts).astype(np.int16)
+
+                            data = shorts.tobytes()
+                        except Exception as ex:
+                            logger.error(f"[Capture] Processing/Resampling error: {ex}")
+
+                    # Feed ring buffer
+                    self._ring_push(data, ts)
+
+                    rms = self._get_rms(data)
+                    if self._rms_cb:
+                        self._rms_cb(rms)
+
+                    # VAD threshold auto-calibration
+                    if calibrating:
+                        with self._lock:
+                            self._calibration_rms.append(rms)
+                            if len(self._calibration_rms) >= calibration_limit:
+                                self._calibrating = False
+                                avg_noise = float(np.mean(self._calibration_rms))
+                                self._vad_threshold = max(150.0, avg_noise * 1.5 + 80.0)
+                                from pipeline.vad import create_vad
+                                self._vad = create_vad(use_silero=self._vad_use_silero, threshold=self._vad_threshold)
+                                logger.info(f"[Capture] Auto-calibrated EnergyVAD threshold to {self._vad_threshold:.1f} (noise floor: {avg_noise:.1f})")
+                                if self._vad_state_cb:
+                                    self._vad_state_cb("calibrated", self._vad_threshold)
+                        continue
+
+                    is_speech = vad.is_speech(data)
+
+                    if is_speech:
+                        consecutive_speech_frames += 1
+                        if not is_recording:
+                            if consecutive_speech_frames >= 2:
+                                is_recording = True
+                                speech_frames = [data]
+                                segment_start_mono = ts - (self._chunk_size / self._sample_rate)
+                                silence_frames = 0
+                                logger.debug("[VAD] Speech started")
+                        else:
+                            speech_frames.append(data)
                             silence_frames = 0
-                            logger.debug("[VAD] Speech started")
                     else:
-                        speech_frames.append(data)
+                        consecutive_speech_frames = 0
+                        if is_recording:
+                            silence_frames += 1
+                            speech_frames.append(data)
+                            if silence_frames >= silence_limit:
+                                self._flush_segment(speech_frames, fps, min_frames, "silence", segment_start_mono, ts)
+                                speech_frames = []
+                                silence_frames = 0
+                                is_recording = False
+
+                    # Max segment length
+                    if is_recording and len(speech_frames) >= max_frames:
+                        self._flush_segment(speech_frames, fps, min_frames, "maxlen", segment_start_mono, ts)
+                        speech_frames = []
                         silence_frames = 0
-                else:
-                    consecutive_speech_frames = 0
-                    if is_recording:
-                        silence_frames += 1
-                        speech_frames.append(data)
-                        if silence_frames >= silence_limit:
-                            self._flush_segment(speech_frames, fps, min_frames, "silence", segment_start_mono, ts)
-                            speech_frames = []
-                            silence_frames = 0
-                            is_recording = False
+                        is_recording = False
 
-                # Max segment length
-                if is_recording and len(speech_frames) >= max_frames:
-                    self._flush_segment(speech_frames, fps, min_frames, "maxlen", segment_start_mono, ts)
-                    speech_frames = []
-                    silence_frames = 0
-                    is_recording = False
+                    # Smoothed VAD state
+                    vad_state = "speech" if is_recording else "silence"
 
-                # Smoothed VAD state for the UI is tied to whether we are actively recording a segment
-                vad_state = "speech" if is_recording else "silence"
+                    if vad_state != last_vad_state and self._vad_state_cb:
+                        self._vad_state_cb(vad_state, rms)
+                        last_vad_state = vad_state
 
-                if vad_state != last_vad_state and self._vad_state_cb:
-                    self._vad_state_cb(vad_state, rms)
-                    last_vad_state = vad_state
+            except Exception as e:
+                logger.error(f"[Capture] Capture loop error: {e}")
+            finally:
+                if stream is not None:
+                    try:
+                        stream.stop_stream()
+                        stream.close()
+                    except Exception:
+                        pass
+                if pa is not None:
+                    try:
+                        pa.terminate()
+                    except Exception:
+                        pass
+                logger.info("[Capture] Audio stream closed/cleaned up")
+                # Wait before retrying to connect
+                time.sleep(1.0)
 
-        except Exception as e:
-            logger.error(f"[Capture] Capture loop error: {e}")
-        finally:
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
-            logger.info("[Capture] Audio stream closed")
 
     def _flush_segment(
         self,
