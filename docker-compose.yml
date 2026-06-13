@@ -54,7 +54,7 @@ services:
     container_name: voiceguard-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "8002:8002"
     depends_on:
       backend:
         condition: service_healthy
