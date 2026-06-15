@@ -25,9 +25,9 @@ services:
       - /dev/snd:/dev/snd:rslave
       - /dev/bus/usb:/dev/bus/usb:rslave
       - /usr/share/alsa:/usr/share/alsa:ro
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --log-level info --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8013 --log-level info --reload
     ports:
-      - "${BACKEND_PORT:-8001}:8001"
+      - "${BACKEND_PORT:-8013}:8013"
     # Required for dynamic ALSA audio access (hotplug)
     privileged: true
     # Required for ALSA audio access
@@ -37,7 +37,7 @@ services:
     # Remove if using MQTT broker also in Docker
     network_mode: host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -54,7 +54,7 @@ services:
     container_name: voiceguard-frontend
     restart: unless-stopped
     ports:
-      - "8002:8002"
+      - "8083:8083"
     depends_on:
       backend:
         condition: service_healthy

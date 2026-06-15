@@ -101,7 +101,7 @@ class Settings(BaseSettings):
 
     # Server
     backend_host: str = "0.0.0.0"
-    backend_port: int = 8001
+    backend_port: int = 8013
     cors_origins: str = "http://localhost:3000"
 
     # Timeouts

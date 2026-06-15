@@ -33,6 +33,6 @@ RUN mkdir -p /app/storage/recordings
 # RUN useradd -m -u 1000 appuser && chown -R appuser /app
 # USER appuser
 
-EXPOSE 8001
+EXPOSE 8013
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--log-level", "info"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8013", "--log-level", "info"]
