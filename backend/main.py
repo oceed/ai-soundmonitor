@@ -192,7 +192,8 @@ async def pipeline_start(_: User = Depends(get_current_user)):
 @app.post("/api/pipeline/stop")
 async def pipeline_stop(_: User = Depends(get_current_user)):
     if _orchestrator:
-        _orchestrator.stop()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _orchestrator.stop)
     return {"message": "Pipeline stopped"}
 
 

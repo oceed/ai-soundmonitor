@@ -18,5 +18,7 @@ async def list_audio_devices(
     _: User = Depends(get_current_user),
 ):
     """List available audio input devices on the host."""
-    devices = AudioCapture.list_devices()
+    import asyncio
+    loop = asyncio.get_running_loop()
+    devices = await loop.run_in_executor(None, AudioCapture.list_devices)
     return {"devices": devices, "total": len(devices)}

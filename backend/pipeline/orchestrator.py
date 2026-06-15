@@ -156,6 +156,21 @@ class PipelineOrchestrator:
     def reload_config(self, force_restart_capture: bool = False) -> None:
         """Dynamically updates running services with the latest config from runtime_config."""
         logger.info("[Orchestrator] Dynamic configuration reload triggered")
+        
+        # Determine if we need to restart capture first, without holding self._lock
+        # to prevent deadlock when self._capture.stop() joins capture thread
+        # while that thread is blocked trying to acquire self._lock in a callback.
+        restart_capture = False
+        if self._capture:
+            current_device = self._capture._device_index
+            new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
+            if current_device != new_device or force_restart_capture:
+                restart_capture = True
+
+        if restart_capture:
+            logger.info(f"[Orchestrator] Stopping audio capture for restart (device index change or forced reload: current_device={current_device if self._capture else 'None'}, new_device={new_device}, forced={force_restart_capture})...")
+            self._capture.stop()
+
         with self._lock:
             # 1. Reinitialize STT/LLM dynamically with new modes or settings
             self._init_stt()
@@ -172,25 +187,19 @@ class PipelineOrchestrator:
                     recording_format=self._rc.get("recording_format", self._settings.recording_format),
                 )
 
-            # 3. Update AudioCapture or restart it if the audio device index changed
-            if self._capture:
-                current_device = self._capture._device_index
-                new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
-
-                if current_device != new_device or force_restart_capture:
-                    logger.info(f"[Orchestrator] Restarting audio capture (device changed or forced reload: current_device={current_device}, new_device={new_device}, forced={force_restart_capture})...")
-                    self._capture.stop()
-                    self._init_capture()
-                    self._capture.start()
-                else:
-                    self._capture.update_vad_params(
-                        threshold=self._rc.get("vad_threshold", self._settings.vad_threshold),
-                        silence_duration=self._rc.get("vad_silence_duration", self._settings.vad_silence_duration),
-                        min_speech_duration=self._rc.get("vad_min_speech_duration", self._settings.vad_min_speech_duration),
-                        max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
-                        use_silero=self._rc.get("vad_use_silero", False),
-                        auto_calibrate=self._rc.get("vad_auto_calibrate", True),
-                    )
+            # 3. Restart or update capture VAD params
+            if restart_capture:
+                self._init_capture()
+                self._capture.start()
+            elif self._capture:
+                self._capture.update_vad_params(
+                    threshold=self._rc.get("vad_threshold", self._settings.vad_threshold),
+                    silence_duration=self._rc.get("vad_silence_duration", self._settings.vad_silence_duration),
+                    min_speech_duration=self._rc.get("vad_min_speech_duration", self._settings.vad_min_speech_duration),
+                    max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
+                    use_silero=self._rc.get("vad_use_silero", False),
+                    auto_calibrate=self._rc.get("vad_auto_calibrate", True),
+                )
 
     @property
     def is_running(self) -> bool:
