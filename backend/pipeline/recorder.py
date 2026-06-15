@@ -17,11 +17,12 @@ import threading
 import time
 import wave
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
+import soundfile as sf
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +388,6 @@ class Recorder:
             wf.writeframes(pcm)
 
     def _save_ogg(self, pcm: bytes, path: Path) -> None:
-        import soundfile as sf
         arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         sf.write(str(path), arr, self._sample_rate, format="OGG", subtype="VORBIS")
 
@@ -456,7 +456,6 @@ class Recorder:
                 self._rotate_continuous_file()
 
     def _start_new_continuous_file(self) -> None:
-        from datetime import datetime, timezone
         self._continuous_start_time = datetime.now(timezone.utc)
         
         # Create continuous directory
@@ -499,7 +498,6 @@ class Recorder:
                 logger.error(f"[Recorder] Error closing continuous file during rotation: {e}")
 
     def _finalize_continuous_file(self, raw_path: Path, start_time: datetime, samples: int) -> None:
-        from datetime import datetime, timezone
         try:
             if not raw_path.exists():
                 return

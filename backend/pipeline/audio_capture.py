@@ -19,6 +19,7 @@ import time
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
+import pyaudio
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,6 @@ class AudioCapture:
     def list_devices() -> List[dict]:
         """List all available audio input devices."""
         try:
-            import pyaudio
             pa = pyaudio.PyAudio()
             devices = []
             n = pa.get_device_count()
@@ -191,7 +191,6 @@ class AudioCapture:
             Tuple of (stream, device_index, opened_rate, opened_channels, device_name)
             or (None, -1, 0, 0, "") if no device could be opened.
         """
-        import pyaudio
 
         # 1. Determine target index from config
         with self._lock:
@@ -300,12 +299,6 @@ class AudioCapture:
         return None, -1, 0, 0, ""
 
     def _capture_loop(self) -> None:
-        try:
-            import pyaudio
-        except ImportError:
-            logger.error("[Capture] pyaudio not installed!")
-            return
-
         while self._running:
             pa = None
             stream = None
