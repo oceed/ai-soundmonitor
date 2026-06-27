@@ -25,7 +25,7 @@ services:
       - /dev/snd:/dev/snd:rslave
       - /dev/bus/usb:/dev/bus/usb:rslave
       - /usr/share/alsa:/usr/share/alsa:ro
-    command: uvicorn main:app --host 0.0.0.0 --port 8013 --log-level info --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8013 --log-level info
     ports:
       - "${BACKEND_PORT:-8013}:8013"
     # Required for dynamic ALSA audio access (hotplug)
