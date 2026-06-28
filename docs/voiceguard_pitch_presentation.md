@@ -105,12 +105,17 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
 
 ## Slide 10: Business Value (Executive Summary)
 *   **Isi Slide**:
-    *   ✅ **Meningkatkan konsistensi kualitas layanan antar cabang**
-    *   ✅ **Mendukung coaching berbasis data**
-    *   ✅ **Membantu identifikasi potensi risiko operasional lebih dini**
-    *   ✅ **Memberikan insight terhadap efektivitas komunikasi penawaran produk**
-    *   ✅ **Mengurangi waktu yang diperlukan untuk melakukan peninjauan manual secara signifikan**
-*   **Talking Points**: "Platform ini memberikan data analitis berkala yang objektif. Hal ini membantu manajemen dan tim terkait dalam melakukan evaluasi kinerja secara lebih efisien, terukur, dan tepat sasaran tanpa harus membuang waktu mendengarkan seluruh rekaman secara acak."
+    *   **1. Akselerasi Kinerja & Revenue (Upselling Insights)**
+        *   Menemukan formula komunikasi agen terbaik (*best practices*) untuk mendongkrak konversi penawaran produk tambahan di seluruh Point of Sale.
+    *   **2. Efisiensi Biaya Operasional & Audit (Cost Optimization)**
+        *   Mengurangi kebutuhan survei langsung dan peninjauan manual di lapangan dengan sistem penyaringan percakapan terpusat secara signifikan.
+    *   **3. Standardisasi Kualitas Layanan Cabang (Brand Consistency)**
+        *   Memastikan setiap nasabah di cabang mana pun menerima kualitas interaksi profesional dan empati yang seragam.
+    *   **4. Proteksi & Mitigasi Risiko Lebih Awal (Risk & Compliance)**
+        *   Mendeteksi indikator risiko transaksi (seperti pembayaran luar prosedur) sejak dini guna mencegah potensi kerugian finansial perusahaan.
+    *   **5. Efektivitas Pelatihan Berbasis Data (Coaching ROI)**
+        *   Memetakan kebutuhan pembinaan (*coaching*) staf secara personal berdasarkan kelemahan komunikasi nyata yang tercatat di dashboard.
+*   **Talking Points**: "Dari sisi bisnis, VoiceGuard memberikan dampak terukur pada lima pilar utama perusahaan. Platform ini membantu meningkatkan peluang pendapatan (*revenue*), mereduksi biaya peninjauan manual (*operational cost*), menyamakan standar pelayanan (*brand image*), melindungi perusahaan dari risiko penyelewengan transaksi (*risk mitigation*), serta menargetkan program pelatihan staf (*coaching*) agar tepat sasaran dan efisien."
 
 ---
 
