@@ -35,6 +35,8 @@ async def list_alerts(
     _: User = Depends(get_current_user),
 ):
     q = select(Alert).order_by(desc(Alert.timestamp))
+    # Exclude NORMAL segment recordings from the Alerts panel list
+    q = q.where(Alert.verdict != "NORMAL")
 
     if verdict:
         if verdict == "FRAUD":

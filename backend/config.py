@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     pre_buffer_seconds: float = 10.0
     post_buffer_seconds: float = 15.0
     recording_format: Literal["wav", "ogg"] = "ogg"
-    record_on_verdict: Literal["FRAUD", "SUSPICIOUS", "BOTH"] = "BOTH"
+    record_on_verdict: Literal["FRAUD", "SUSPICIOUS", "BOTH", "ALL"] = "BOTH"
     continuous_recording_enabled: bool = False
     continuous_chunk_minutes: int = 10
     vad_auto_calibrate: bool = True
@@ -130,43 +130,57 @@ def get_settings() -> Settings:
 # Runtime Config — DB-backed, in-memory cache
 # ─────────────────────────────────────────────────────────
 
-_DEFAULT_SYSTEM_PROMPT = """Anda adalah Petugas Kepatuhan AI untuk VoiceGuard dari ProtectQube.
+_DEFAULT_SYSTEM_PROMPT_BASE = """Anda adalah Petugas Kepatuhan AI untuk VoiceGuard dari ProtectQube.
 
 Tugas Anda adalah menganalisis transkrip percakapan yang ditangkap dari Speech-to-Text (STT) di lokasi toko/retail.
 
 PENTING:
 - Transkrip mungkin tidak sempurna karena kesalahan STT. Fokuslah pada substansi pembicaraan, bukan ejaan.
-- Bersikaplah objektif. Jangan mengasumsikan adanya kecurangan tanpa bukti yang jelas.
+- Bersikaplah objektif. Jangan mengasumsikan adanya kecurangan tanpa bukti yang jelas."""
+
+
+def compile_system_prompt(base_instructions: str, categories: list) -> str:
+    # construct the categories part
+    cats_str = ""
+    for i, cat in enumerate(categories):
+        key = cat.get("key", "")
+        label = cat.get("label", "")
+        desc = cat.get("description", "")
+        cats_str += f"{i+1}. {key}: {desc or label}\n"
+    
+    # construct the JSON format template
+    flags_lines = []
+    for cat in categories:
+        key = cat.get("key", "")
+        flags_lines.append(f'    "{key}": false')
+    flags_str = ",\n".join(flags_lines)
+    
+    compiled = f"""{base_instructions.strip()}
 
 Deteksi indikator kecurangan (fraud flags) berikut:
-1. leasing_redirection: Agen mengarahkan pelanggan ke perusahaan leasing pesaing/lain.
-2. personal_contact: Agen membagikan kontak pribadi (nomor HP, email pribadi) untuk transaksi di luar sistem resmi.
-3. outside_process: Transaksi atau negosiasi dilakukan di luar proses resmi yang berlaku.
-4. data_manipulation: Manipulasi atau pemalsuan data pelanggan (pendapatan, aset, data KTP/identitas).
-5. payment_diversion: Pembayaran diarahkan ke rekening pribadi agen atau saluran tidak resmi lainnya.
+{cats_str.strip()}
 
 Output HARUS hanya berupa JSON valid tanpa penjelasan tambahan di luar JSON. Jangan gunakan markdown block ```json.
 
 Format JSON Output:
-{
-  "fraud_flags": {
-    "leasing_redirection": false,
-    "personal_contact": false,
-    "outside_process": false,
-    "data_manipulation": false,
-    "payment_diversion": false
-  },
+{{
+  "fraud_flags": {{
+{flags_str}
+  }},
   "evidence": [],
   "reason": ""
-}
+}}
 
 Keterangan:
 - "fraud_flags": bernilai true jika indikator tersebut terdeteksi dalam transkrip percakapan, jika tidak bernilai false.
 - "evidence": daftar kutipan kalimat langsung dari transkrip yang menjadi bukti adanya indikator kecurangan tersebut. Jika tidak ada, biarkan kosong [].
 - "reason": penjelasan singkat dan jelas mengapa indikator tersebut terdeteksi atau tidak terdeteksi."""
+    return compiled
+
 
 _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
-    "system_prompt": _DEFAULT_SYSTEM_PROMPT,
+    "system_prompt_base": _DEFAULT_SYSTEM_PROMPT_BASE,
+    "system_prompt": "",  # Set dynamically below
     "fraud_categories": [
         {"key": "leasing_redirection", "label": "Leasing Redirection", "description": "Agen mengarahkan pelanggan ke perusahaan leasing lain", "classification": "FRAUD"},
         {"key": "personal_contact", "label": "Personal Contact", "description": "Agen membagikan kontak pribadi untuk transaksi luar sistem resmi", "classification": "SUSPICIOUS"},
@@ -210,7 +224,18 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "local_llm_model": "qwen2.5:1.5b",
     "local_llm_endpoint_type": "ollama",
     "local_whisper_model": "base",
+    "sample_rate": 16000,
+    "channels": 1,
+    "chunk_size": 512,
+    "context_limit": 5,
+    "context_max_age_seconds": 300,
+    "context_gap_threshold_seconds": 90,
 }
+
+_DEFAULT_RUNTIME_CONFIG["system_prompt"] = compile_system_prompt(
+    _DEFAULT_SYSTEM_PROMPT_BASE,
+    _DEFAULT_RUNTIME_CONFIG["fraud_categories"]
+)
 
 
 class RuntimeConfig:

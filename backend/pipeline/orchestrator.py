@@ -164,11 +164,21 @@ class PipelineOrchestrator:
         if self._capture:
             current_device = self._capture._device_index
             new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
-            if current_device != new_device or force_restart_capture:
+            current_sample_rate = self._capture._sample_rate
+            new_sample_rate = self._rc.get("sample_rate", self._settings.sample_rate)
+            current_channels = self._capture._channels
+            new_channels = self._rc.get("channels", self._settings.channels)
+            current_chunk_size = self._capture._chunk_size
+            new_chunk_size = self._rc.get("chunk_size", self._settings.chunk_size)
+            if (current_device != new_device or 
+                current_sample_rate != new_sample_rate or 
+                current_channels != new_channels or 
+                current_chunk_size != new_chunk_size or 
+                force_restart_capture):
                 restart_capture = True
 
         if restart_capture:
-            logger.info(f"[Orchestrator] Stopping audio capture for restart (device index change or forced reload: current_device={current_device if self._capture else 'None'}, new_device={new_device}, forced={force_restart_capture})...")
+            logger.info(f"[Orchestrator] Stopping audio capture for restart (device index/format change or forced reload: current_device={current_device if self._capture else 'None'}, new_device={new_device}, forced={force_restart_capture})...")
             self._capture.stop()
 
         with self._lock:
@@ -259,9 +269,9 @@ class PipelineOrchestrator:
             recordings_dir=recordings_dir,
             pre_buffer_s=rc.get("pre_buffer_seconds", s.pre_buffer_seconds),
             post_buffer_s=rc.get("post_buffer_seconds", s.post_buffer_seconds),
-            recording_format=s.recording_format,
-            sample_rate=s.sample_rate,
-            channels=s.channels,
+            recording_format=rc.get("recording_format", s.recording_format),
+            sample_rate=rc.get("sample_rate", s.sample_rate),
+            channels=rc.get("channels", s.channels),
             continuous_enabled=rc.get("continuous_recording_enabled", False),
             continuous_chunk_minutes=rc.get("continuous_chunk_minutes", 10),
             db_writer=self._db,
@@ -278,9 +288,9 @@ class PipelineOrchestrator:
             rms_callback=self._on_rms,
             vad_state_callback=self._on_vad_state,
             device_index=rc.get("audio_device_index", s.audio_device_index),
-            sample_rate=s.sample_rate,
-            channels=s.channels,
-            chunk_size=s.chunk_size,
+            sample_rate=rc.get("sample_rate", s.sample_rate),
+            channels=rc.get("channels", s.channels),
+            chunk_size=rc.get("chunk_size", s.chunk_size),
             vad_threshold=rc.get("vad_threshold", s.vad_threshold),
             silence_duration=rc.get("vad_silence_duration", s.vad_silence_duration),
             min_speech_duration=rc.get("vad_min_speech_duration", s.vad_min_speech_duration),
@@ -349,8 +359,8 @@ class PipelineOrchestrator:
             self._emit("stt_progress", {"segment_no": seg_no, "status": "transcribing"})
             result = self._stt.transcribe(
                 item["pcm"],
-                sample_rate=self._settings.sample_rate,
-                channels=self._settings.channels,
+                sample_rate=self._rc.get("sample_rate", self._settings.sample_rate),
+                channels=self._rc.get("channels", self._settings.channels),
             )
 
             if not result.text:
@@ -433,9 +443,9 @@ class PipelineOrchestrator:
                     try:
                         recent = self._db.get_recent_segments(
                             self._session_id,
-                            limit=5,
-                            max_age_seconds=300,
-                            gap_threshold_seconds=90,
+                            limit=int(self._rc.get("context_limit", 5)),
+                            max_age_seconds=int(self._rc.get("context_max_age_seconds", 300)),
+                            gap_threshold_seconds=int(self._rc.get("context_gap_threshold_seconds", 90)),
                         )
                         if recent:
                             context_str = "\n".join([f'- "{r["transcript"]}"' for r in recent])
@@ -482,9 +492,13 @@ class PipelineOrchestrator:
                 "timestamp": timestamp.isoformat(),
             })
 
-            # Handle alert
+            # Handle alert or record segment
+            record_verdict = self._rc.get("record_on_verdict", "BOTH")
             alert_verdicts = set(self._rc.get("alert_verdicts", []))
-            if fraud_result.classification in alert_verdicts or fraud_result.is_alert:
+            is_alert = fraud_result.classification in alert_verdicts or fraud_result.is_alert
+            should_record_all = (record_verdict == "ALL")
+
+            if is_alert or should_record_all:
                 self._handle_alert(
                     segment_id=segment_id,
                     segment_no=seg_no,
@@ -549,7 +563,8 @@ class PipelineOrchestrator:
         # 1. Trigger recorder
         record_verdict = self._rc.get("record_on_verdict", "BOTH")
         should_record = (
-            record_verdict == "BOTH"
+            record_verdict == "ALL"
+            or record_verdict == "BOTH"
             or (record_verdict == "FRAUD" and "FRAUD" in fraud_result.classification)
             or (record_verdict == "SUSPICIOUS" and fraud_result.classification == "SUSPICIOUS")
         )
@@ -589,9 +604,11 @@ class PipelineOrchestrator:
                 "duration_s": recording_info["duration_s"],
             })
 
-        # 3. Upload audio & get unique ID
+        is_actual_alert = fraud_result.classification in ("FRAUD", "SUSPICIOUS")
+
+        # 3. Upload audio & get unique ID (only for actual alerts)
         audio_unique_id = None
-        if self._rc.get("audio_upload_enabled", False) and self._audio_uploader and recording_info:
+        if is_actual_alert and self._rc.get("audio_upload_enabled", False) and self._audio_uploader and recording_info:
             try:
                 audio_unique_id = self._audio_uploader.upload(recording_info["path"])
                 if audio_unique_id:
@@ -600,8 +617,8 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(f"[Alert {alert_id}] Audio upload failed: {e}")
 
-        # 4. Publish MQTT
-        if self._rc.get("mqtt_enabled", False) and self._mqtt:
+        # 4. Publish MQTT (only for actual alerts)
+        if is_actual_alert and self._rc.get("mqtt_enabled", False) and self._mqtt:
             try:
                 alert_data = self._db.get_alert(alert_id)
                 payload = {

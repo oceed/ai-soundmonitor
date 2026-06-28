@@ -9,8 +9,10 @@ export const patchConfig = (updates) =>
 export const getPrompt = () =>
   client.get('/api/config/prompt').then(r => r.data)
 
-export const updatePrompt = (system_prompt) =>
-  client.patch('/api/config/prompt', { system_prompt }).then(r => r.data)
+export const updatePrompt = (payload) => {
+  const body = typeof payload === 'string' ? { system_prompt: payload } : payload;
+  return client.patch('/api/config/prompt', body).then(r => r.data)
+}
 
 export const resetConfig = () =>
   client.post('/api/config/reset').then(r => r.data)

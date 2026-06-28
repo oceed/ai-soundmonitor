@@ -11,16 +11,10 @@ PATCH /api/config/prompt  → update system prompt
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from typing import Any, Dict
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict, Optional
 
 from api.auth import get_current_user
-from config import get_settings, runtime_config
+from config import get_settings, runtime_config, compile_system_prompt, _DEFAULT_SYSTEM_PROMPT_BASE
 from database import get_db
 from models import ConfigEntry, User
 
@@ -32,7 +26,9 @@ class ConfigPatch(BaseModel):
 
 
 class PromptPatch(BaseModel):
-    system_prompt: str
+    system_prompt: Optional[str] = None
+    system_prompt_base: Optional[str] = None
+    fraud_categories: Optional[list] = None
 
 
 # ─────────────────────────────────────────────────────────
@@ -59,9 +55,15 @@ async def patch_config(
     _: User = Depends(get_current_user),
 ):
     """Update runtime config keys. Persists to DB and updates in-memory cache."""
-    updates = body.updates
+    updates = dict(body.updates)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
+
+    # If categories or prompt base are being updated, recompile the system prompt
+    if "fraud_categories" in updates or "system_prompt_base" in updates:
+        current_base = updates.get("system_prompt_base", runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE))
+        current_categories = updates.get("fraud_categories", runtime_config.get("fraud_categories", []))
+        updates["system_prompt"] = compile_system_prompt(current_base, current_categories)
 
     # Persist to DB
     for key, value in updates.items():
@@ -97,6 +99,7 @@ async def get_prompt(
 ):
     return {
         "system_prompt": runtime_config.get("system_prompt", ""),
+        "system_prompt_base": runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE),
         "fraud_categories": runtime_config.get("fraud_categories", []),
         "alert_verdicts": runtime_config.get("alert_verdicts", []),
     }
@@ -108,20 +111,35 @@ async def update_prompt(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    if not body.system_prompt.strip():
-        raise HTTPException(status_code=400, detail="System prompt cannot be empty")
+    current_base = runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE)
+    current_categories = runtime_config.get("fraud_categories", [])
 
-    value_json = json.dumps(body.system_prompt)
-    result = await db.execute(select(ConfigEntry).where(ConfigEntry.key == "system_prompt"))
-    entry = result.scalar_one_or_none()
-    if entry:
-        entry.value = value_json
-        entry.updated_at = datetime.utcnow()
+    updates = {}
+    if body.system_prompt_base is not None:
+        updates["system_prompt_base"] = body.system_prompt_base
+        current_base = body.system_prompt_base
+    if body.fraud_categories is not None:
+        updates["fraud_categories"] = body.fraud_categories
+        current_categories = body.fraud_categories
+
+    # Check if we got an explicit full system prompt update (backwards compatibility)
+    if body.system_prompt is not None and body.system_prompt.strip():
+        updates["system_prompt"] = body.system_prompt
     else:
-        db.add(ConfigEntry(key="system_prompt", value=value_json))
+        updates["system_prompt"] = compile_system_prompt(current_base, current_categories)
+
+    for key, value in updates.items():
+        value_json = json.dumps(value)
+        result = await db.execute(select(ConfigEntry).where(ConfigEntry.key == key))
+        entry = result.scalar_one_or_none()
+        if entry:
+            entry.value = value_json
+            entry.updated_at = datetime.utcnow()
+        else:
+            db.add(ConfigEntry(key=key, value=value_json))
 
     await db.commit()
-    runtime_config.set("system_prompt", body.system_prompt)
+    runtime_config.update(updates)
 
     # Trigger dynamic hot reload in running orchestrator
     try:
@@ -132,7 +150,10 @@ async def update_prompt(
     except Exception as e:
         pass
 
-    return {"message": "System prompt updated"}
+    return {
+        "message": "Prompt and categories updated",
+        "system_prompt": runtime_config.get("system_prompt", "")
+    }
 
 
 @router.post("/reset")
