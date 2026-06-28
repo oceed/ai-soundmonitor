@@ -18,7 +18,7 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
     *   **Konsistensi SOP & Kualitas**: Sulit memantau apakah standar pelayanan (SOP) dijalankan secara konsisten di seluruh Point of Sale (POS) setiap hari.
     *   **Efektivitas Penawaran Produk**: Sulit memahami apakah cara penyampaian produk oleh petugas sudah berjalan secara konsisten dan efektif hanya berdasarkan data penjualan akhir.
     *   **Risiko Operasional Terlewat**: Tanpa monitoring yang merata, potensi ketidaksesuaian SOP maupun peluang peningkatan kualitas layanan dapat terlewat karena keterbatasan waktu peninjauan manual.
-*   **Talking Points**: "Dalam operasional jaringan cabang, BFI menghadapi tantangan besar untuk mengaudit kualitas layanan secara konsisten. Meninjau seluruh rekaman percakapan secara manual tentu membutuhkan waktu dan sumber daya yang besar. Karena itu diperlukan sistem yang mampu membantu menyaring percakapan yang berpotensi memerlukan perhatian lebih."
+*   **Talking Points**: "Dalam operasional jaringan cabang, BFI menghadapi tantangan besar untuk mengamati kualitas layanan secara konsisten. Meninjau seluruh rekaman percakapan secara manual tentu membutuhkan waktu dan sumber daya yang besar. Karena itu diperlukan sistem yang mampu membantu menyaring percakapan yang berpotensi memerlukan perhatian lebih."
 
 ---
 
@@ -48,13 +48,13 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
 
 | Area Pemantauan | Contoh Insight yang Dihasilkan |
 | :--- | :--- |
-| **Kepatuhan SOP** | Persentase percakapan yang mengikuti SOP pembuka dan penutup. |
-| **Penawaran Produk** | Frekuensi dan efektivitas penawaran produk tambahan (*upselling*). |
-| **Kualitas Layanan** | Deteksi kesopanan, kesabaran, serta empati petugas. |
-| **Mitigasi Risiko** | Penanda indikator pembayaran di luar prosedur resmi. |
-| **Kinerja Cabang** | Tren kualitas pelayanan dan indikator operasional per cabang. |
+| **Kepatuhan SOP** | Persentase percakapan yang mengikuti prosedur alur layanan (dapat disesuaikan per perusahaan). |
+| **Sales & Penawaran** | Frekuensi dan efektivitas komunikasi penawaran produk tambahan (*upselling/cross-selling*). |
+| **Service Quality** | Deteksi kesopanan petugas dan identifikasi *unprofessional language* (nada ketus/tidak ramah). |
+| **Mitigasi Risiko** | Identifikasi pola pengalihan nasabah ke pihak lain (*redirection*) atau transaksi luar sistem resmi. |
+| **Fraud Prevention** | Penanda potensi pengalihan angsuran (*payment diversion*) atau rekayasa dokumen. |
 
-*   **Talking Points**: "Dengan VoiceGuard, BFI dapat memantau berbagai area penting sekaligus secara dinamis. Anda bisa melihat tren kualitas pelayanan antarcabang, memantau seberapa konsisten SOP dijalankan, hingga mendeteksi potensi risiko operasional sebelum menjadi kendala besar."
+*   **Talking Points**: "Dengan VoiceGuard, BFI dapat memantau berbagai area penting secara dinamis. Kategori penandaan sangat fleksibel: bisa diatur untuk mendeteksi kesopanan berbicara, kepatuhan alur layanan khusus, efektivitas penawaran produk, hingga mitigasi risiko operasional tertentu sesuai fokus manajemen cabang."
 
 ---
 
@@ -62,7 +62,7 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
 *   **Isi Slide**:
     *   **Dashboard Analytics**
         *   Ringkasan hasil analisis percakapan berdasarkan periode, kategori, maupun indikator tertentu.
-        *   Perbandingan indikator kinerja antar cabang maupun antar periode.
+        *   Perbandingan indikator antar cabang maupun antar periode.
         *   Tren kepatuhan layanan dan efisiensi operasional.
     *   **Audio Playback**
         *   Memutar ulang segmen percakapan tertentu yang telah ditandai oleh AI untuk verifikasi cepat.
