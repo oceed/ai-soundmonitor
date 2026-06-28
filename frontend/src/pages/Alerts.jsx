@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { getAlerts, deleteAlert, getRecordingStreamUrl, getRecordingDownloadUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
+import { getConfig } from '../api/config'
 
 const VERDICT_CFG = {
   FRAUD: { color: 'var(--fraud)', bg: 'var(--fraud-bg)', border: 'var(--fraud-border)', icon: '🚨', label: 'FRAUD' },
@@ -19,6 +20,15 @@ export function Alerts({ liveEvents }) {
   const [expandedId, setExpandedId] = useState(null)
   const [page, setPage] = useState(1)
   const { addToast } = useToast()
+  const [categories, setCategories] = useState([])
+
+  useEffect(() => {
+    getConfig().then(cfg => {
+      if (cfg?.fraud_categories) {
+        setCategories(cfg.fraud_categories)
+      }
+    }).catch(err => console.error(err))
+  }, [])
 
   const LIMIT = 15
   const totalPages = Math.ceil(total / LIMIT) || 1
@@ -218,6 +228,7 @@ export function Alerts({ liveEvents }) {
                   expanded={expandedId === alert.id}
                   onToggle={() => setExpandedId(prev => prev === alert.id ? null : alert.id)}
                   onDelete={handleDelete}
+                  categories={categories}
                 />
               ))}
             </div>
@@ -257,7 +268,7 @@ export function Alerts({ liveEvents }) {
   )
 }
 
-function AlertRow({ alert, expanded, onToggle, onDelete }) {
+function AlertRow({ alert, expanded, onToggle, onDelete, categories = [] }) {
   const cfg = VERDICT_CFG[alert.verdict] || VERDICT_CFG.SUSPICIOUS
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
@@ -272,6 +283,22 @@ function AlertRow({ alert, expanded, onToggle, onDelete }) {
       audioRef.current?.play()
       setPlaying(true)
     }
+  }
+
+  const renderBadge = (f, isMini = false) => {
+    const cat = categories.find(c => c.key === f)
+    const label = cat?.label || f.replace(/_/g, ' ')
+    const cls = cat?.classification || 'FRAUD'
+    
+    let badgeClass = 'badge badge-fraud'
+    if (cls === 'NORMAL') badgeClass = 'badge badge-normal'
+    else if (cls === 'SUSPICIOUS') badgeClass = 'badge badge-suspicious'
+    
+    return (
+      <span key={f} className={badgeClass} style={isMini ? { fontSize: 9 } : {}}>
+        {label}
+      </span>
+    )
   }
 
   return (
@@ -295,9 +322,7 @@ function AlertRow({ alert, expanded, onToggle, onDelete }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{alert.verdict}</span>
-            {alert.flags?.slice(0, 2).map(f => (
-              <span key={f} className="badge badge-fraud" style={{ fontSize: 9 }}>{f.replace(/_/g, ' ')}</span>
-            ))}
+            {alert.flags?.slice(0, 2).map(f => renderBadge(f, true))}
             {alert.recording_ready && (
               <span className="badge badge-info" style={{ fontSize: 9 }}>🔊 REC</span>
             )}
@@ -335,9 +360,7 @@ function AlertRow({ alert, expanded, onToggle, onDelete }) {
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>{alert.reason}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <span className="badge badge-info">Risk: {alert.risk_level}</span>
-                {alert.flags?.map(f => (
-                  <span key={f} className="badge badge-fraud">{f.replace(/_/g, ' ')}</span>
-                ))}
+                {alert.flags?.map(f => renderBadge(f))}
               </div>
             </div>
           </div>

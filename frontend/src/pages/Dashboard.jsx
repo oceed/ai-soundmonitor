@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { AudioVisualizer } from '../components/AudioVisualizer'
 import { format } from 'date-fns'
-import { startPipeline, stopPipeline, getSegments, getSessions } from '../api/config'
+import { startPipeline, stopPipeline, getSegments, getSessions, getConfig } from '../api/config'
 import { getRecordingStreamUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 
@@ -197,7 +197,7 @@ function ProcessingState({ events = [] }) {
 }
 
 /* ─── Feed item ─── */
-function FeedItem({ item, isNew, onPlayClick }) {
+function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.ERROR
   const isBad = item.verdict === 'FRAUD' || item.verdict === 'SUSPICIOUS'
 
@@ -220,9 +220,20 @@ function FeedItem({ item, isNew, onPlayClick }) {
           <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
             {cfg.icon} {item.classification || item.verdict}
           </span>
-          {item.flags?.map(f => (
-            <span key={f} className="badge badge-fraud" style={{ fontSize: 9, padding: '1px 6px' }}>{f}</span>
-          ))}
+          {item.flags?.map(f => {
+            const cat = categories.find(c => c.key === f);
+            const label = cat?.label || f.replace(/_/g, ' ');
+            const cls = cat?.classification || 'FRAUD';
+            let badgeClass = 'badge badge-fraud';
+            if (cls === 'NORMAL') badgeClass = 'badge badge-normal';
+            else if (cls === 'SUSPICIOUS') badgeClass = 'badge badge-suspicious';
+
+            return (
+              <span key={f} className={badgeClass} style={{ fontSize: 9, padding: '1px 6px' }}>
+                {label}
+              </span>
+            );
+          })}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {item.stt_ms > 0 && (
@@ -389,6 +400,17 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
   const [playingRecording, setPlayingRecording] = useState(null)
   const feedRef = useRef(null)
   const { addToast } = useToast()
+  const [categories, setCategories] = useState([])
+
+  useEffect(() => {
+    getConfig()
+      .then(cfg => {
+        if (cfg?.fraud_categories) {
+          setCategories(cfg.fraud_categories)
+        }
+      })
+      .catch(err => console.error('Failed to load categories:', err))
+  }, [activeSessionId])
 
   /* Sync stats and session ID from pipeline status, or fetch latest session from database */
   useEffect(() => {
@@ -542,6 +564,25 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
   /* Derived: recent fraud/sus count for alert strip */
   const recentBad = useMemo(() => feed.filter(f => f.verdict === 'FRAUD' || f.verdict === 'SUSPICIOUS').slice(0, 3), [feed])
 
+  const sopScore = useMemo(() => {
+    const total = stats.segments || 0
+    if (total === 0) return 100
+    const nonCompliant = (stats.FRAUD || 0) + (stats.SUSPICIOUS || 0)
+    return Math.max(0, Math.round(((total - nonCompliant) / total) * 100))
+  }, [stats])
+
+  const getScoreColor = (score) => {
+    if (score >= 90) return 'var(--clear)'
+    if (score >= 75) return 'var(--suspicious)'
+    return 'var(--fraud)'
+  }
+
+  const getScoreIcon = (score) => {
+    if (score >= 90) return '🛡️'
+    if (score >= 75) return '⚠️'
+    return '🚨'
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
@@ -574,7 +615,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         </div>
       </div>
 
-      {/* ── Stat bar (4 cards) ── */}
+      {/* ── Stat bar (5 cards) ── */}
       <div className="stat-bar">
         {[
           {
@@ -583,6 +624,13 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             sub: `This session`,
             color: 'var(--accent-light)',
             icon: '◎',
+          },
+          {
+            label: 'SOP Compliance',
+            value: `${sopScore}%`,
+            sub: sopScore >= 90 ? 'Excellent standards' : sopScore >= 75 ? 'Needs review' : 'Critical attention',
+            color: getScoreColor(sopScore),
+            icon: getScoreIcon(sopScore),
           },
           {
             label: 'Fraud Detected',
@@ -742,6 +790,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                   item={item}
                   isNew={i === 0}
                   onPlayClick={setPlayingRecording}
+                  categories={categories}
                 />
               ))
             )}
