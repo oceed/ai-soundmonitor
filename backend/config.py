@@ -187,6 +187,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
         {"key": "outside_process", "label": "Outside Process", "description": "Transaksi atau negosiasi di luar proses resmi", "classification": "SUSPICIOUS"},
         {"key": "data_manipulation", "label": "Data Manipulation", "description": "Agen memanipulasi atau memalsukan data pelanggan", "classification": "FRAUD"},
         {"key": "payment_diversion", "label": "Payment Diversion", "description": "Agen mengarahkan pembayaran ke rekening pribadi atau tidak resmi", "classification": "FRAUD"},
+        {"key": "upsell_cross_sell", "label": "Upsell & Cross-sell", "description": "Agen menawarkan produk tambahan, top-up dana, atau produk pembiayaan lainnya", "classification": "NORMAL"},
     ],
     "alert_verdicts": ["FRAUD", "SUSPICIOUS"],
     "device_name": "VoiceGuard-Store-01",
