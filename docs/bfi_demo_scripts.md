@@ -61,7 +61,7 @@ Dalam operasional harian jaringan kantor cabang, interaksi pelayanan terjadi di 
     *   **Nasabah**: "Pak, besok jadi survei ke rumah saya untuk cek fisik kendaraan?"
     *   **Petugas**: "Kalau Bapak sedang sibuk bekerja, kita ketemu saja di luar kantor supaya lebih praktis. Nanti berkas kontrak dan cek fisiknya saya bawa, kita bisa cek di warung kopi dekat kantor Bapak nanti sore."
 *   **1 Arah (Monolog Petugas)**:
-    *   "Halo Pak, untuk penandatanganan dokumen pengajuan dana ini kita tidak usah lakukan di kantor cabang BFI. Nanti kita ketemu saja di luar setelah jam kantor biar lebih santai dan cepat prosesnya."
+    *   "Halo Pak, untuk penandatanganan dokumen pengajuan dana ini kita tidak usah lakukan di kantor cabang resmi. Nanti kita ketemu saja di luar setelah jam kantor biar lebih santai dan cepat prosesnya."
 
 ---
 
