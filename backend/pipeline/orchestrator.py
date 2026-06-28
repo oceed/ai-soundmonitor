@@ -82,6 +82,10 @@ class PipelineOrchestrator:
         self._stats = {"FRAUD": 0, "SUSPICIOUS": 0, "NORMAL": 0, "ERROR": 0}
         self._segment_counter = 0
 
+        # Drain/Re-create queues to prevent stale None signals or leftover items
+        self._segment_queue = queue.Queue()
+        self._llm_queue = queue.Queue()
+
         # Initialize components
         self._init_stt()
         self._init_llm()
