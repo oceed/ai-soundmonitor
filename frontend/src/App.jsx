@@ -7,6 +7,7 @@ import { Sidebar } from './components/Sidebar'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Alerts } from './pages/Alerts'
+import { Analytics } from './pages/Analytics'
 import { Playback } from './pages/Playback'
 import { Settings } from './pages/Settings'
 import { useWebSocket } from './hooks/useWebSocket.js'
@@ -60,6 +61,7 @@ function AppLayout() {
       <div className="main-content">
         <Routes>
           <Route path="/" element={<Dashboard liveEvents={liveEvents} pipelineStatus={pipelineStatus} />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/alerts" element={<Alerts liveEvents={liveEvents} />} />
           <Route path="/playback" element={<Playback />} />
           <Route path="/settings" element={<Settings liveDevices={liveDevices} />} />

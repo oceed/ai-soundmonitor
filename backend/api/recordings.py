@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/recordings", tags=["recordings"])
 @router.get("/timeline")
 async def get_timeline(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    tz_offset: int = Query(0, description="Timezone offset in minutes from client (e.g., -420 for UTC+7)"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -38,11 +39,13 @@ async def get_timeline(
     from sqlalchemy.orm import selectinload
 
     try:
-        day_start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        local_start = datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
 
-    day_end = day_start + timedelta(days=1)
+    local_end = local_start + timedelta(days=1)
+    day_start = local_start + timedelta(minutes=tz_offset)
+    day_end = local_end + timedelta(minutes=tz_offset)
 
     result = await db.execute(
         select(Segment)

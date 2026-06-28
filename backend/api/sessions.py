@@ -102,6 +102,94 @@ async def list_segments(
     }
 
 
+@router.get("/api/analytics")
+async def get_analytics(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select
+    
+    dt_from = None
+    if date_from:
+        try:
+            dt_from = datetime.fromisoformat(date_from)
+            if dt_from.tzinfo is not None:
+                dt_from = dt_from.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            pass
+
+    dt_to = None
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to)
+            if dt_to.tzinfo is not None:
+                dt_to = dt_to.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            pass
+
+    q = select(Segment)
+    if dt_from:
+        q = q.where(Segment.timestamp >= dt_from)
+    if dt_to:
+        q = q.where(Segment.timestamp <= dt_to)
+        
+    result = await db.execute(q)
+    segments = result.scalars().all()
+    
+    total_segments = len(segments)
+    verdict_counts = {"FRAUD": 0, "SUSPICIOUS": 0, "NORMAL": 0}
+    category_counts = {}
+    daily_trend = {}
+    
+    for s in segments:
+        verdict = s.verdict or "NORMAL"
+        verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+        
+        if s.fraud_flags:
+            for cat_key, active in s.fraud_flags.items():
+                if active:
+                    category_counts[cat_key] = category_counts.get(cat_key, 0) + 1
+                    
+        date_str = s.timestamp.strftime("%Y-%m-%d") if s.timestamp else "Unknown"
+        if date_str not in daily_trend:
+            daily_trend[date_str] = {
+                "date": date_str,
+                "total": 0,
+                "fraud": 0,
+                "suspicious": 0,
+                "normal": 0,
+            }
+        daily_trend[date_str]["total"] += 1
+        if verdict == "FRAUD":
+            daily_trend[date_str]["fraud"] += 1
+        elif verdict == "SUSPICIOUS":
+            daily_trend[date_str]["suspicious"] += 1
+        else:
+            daily_trend[date_str]["normal"] += 1
+            
+    trend_list = []
+    for d_str, day_data in sorted(daily_trend.items()):
+        total = day_data["total"]
+        non_compliant = day_data["fraud"] + day_data["suspicious"]
+        score = max(0, round(((total - non_compliant) / total) * 100)) if total > 0 else 100
+        day_data["sop_score"] = score
+        trend_list.append(day_data)
+        
+    non_compliant_total = verdict_counts["FRAUD"] + verdict_counts["SUSPICIOUS"]
+    overall_sop_score = max(0, round(((total_segments - non_compliant_total) / total_segments) * 100)) if total_segments > 0 else 100
+    
+    return {
+        "total_segments": total_segments,
+        "by_verdict": verdict_counts,
+        "by_category": category_counts,
+        "sop_score": overall_sop_score,
+        "daily_trend": trend_list,
+    }
+
+
 def _session_to_dict(s: RecordingSession) -> dict:
     return {
         "id": s.id,

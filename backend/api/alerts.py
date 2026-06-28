@@ -47,6 +47,8 @@ async def list_alerts(
     if date_from:
         try:
             dt = datetime.fromisoformat(date_from)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
             q = q.where(Alert.timestamp >= dt)
         except ValueError:
             pass
@@ -54,6 +56,8 @@ async def list_alerts(
     if date_to:
         try:
             dt = datetime.fromisoformat(date_to)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
             q = q.where(Alert.timestamp <= dt)
         except ValueError:
             pass
@@ -87,12 +91,18 @@ async def get_stats(
     q = select(Alert)
     if date_from:
         try:
-            q = q.where(Alert.timestamp >= datetime.fromisoformat(date_from))
+            dt = datetime.fromisoformat(date_from)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            q = q.where(Alert.timestamp >= dt)
         except ValueError:
             pass
     if date_to:
         try:
-            q = q.where(Alert.timestamp <= datetime.fromisoformat(date_to))
+            dt = datetime.fromisoformat(date_to)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            q = q.where(Alert.timestamp <= dt)
         except ValueError:
             pass
 

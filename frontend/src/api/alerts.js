@@ -12,8 +12,13 @@ export const deleteAlert = (id) =>
 export const getAlertStats = (params = {}) =>
   client.get('/api/alerts/stats', { params }).then(r => r.data)
 
-export const getTimeline = (date) =>
-  client.get('/api/recordings/timeline', { params: { date } }).then(r => r.data)
+export const getAnalytics = (params = {}) =>
+  client.get('/api/analytics', { params }).then(r => r.data)
+
+export const getTimeline = (date) => {
+  const tzOffset = new Date().getTimezoneOffset()
+  return client.get('/api/recordings/timeline', { params: { date, tz_offset: tzOffset } }).then(r => r.data)
+}
 
 export const getRecordingStreamUrl = (alertId) => {
   const token = localStorage.getItem('voiceguard_token')

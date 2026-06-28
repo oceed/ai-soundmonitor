@@ -5,6 +5,7 @@ import protectqubeLogo from '../assets/protectqube.png'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '⬡', exact: true },
+  { to: '/analytics', label: 'Analytics', icon: '📊' },
   { to: '/alerts', label: 'Alert Events', icon: '◉' },
   { to: '/playback', label: 'Playback', icon: '▶' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
