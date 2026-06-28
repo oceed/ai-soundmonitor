@@ -105,33 +105,29 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
 
 ## Slide 10: Business Value (Executive Summary)
 *   **Isi Slide**:
-    *   **1. Akselerasi Kinerja & Revenue (Upselling Insights)**
-        *   Menemukan formula komunikasi agen terbaik (*best practices*) untuk mendongkrak konversi penawaran produk tambahan di seluruh Point of Sale.
-    *   **2. Efisiensi Biaya Operasional & Audit (Cost Optimization)**
-        *   Mengurangi kebutuhan survei langsung dan peninjauan manual di lapangan dengan sistem penyaringan percakapan terpusat secara signifikan.
-    *   **3. Standardisasi Kualitas Layanan Cabang (Brand Consistency)**
-        *   Memastikan setiap nasabah di cabang mana pun menerima kualitas interaksi profesional dan empati yang seragam.
-    *   **4. Proteksi & Mitigasi Risiko Lebih Awal (Risk & Compliance)**
-        *   Mendeteksi indikator risiko transaksi (seperti pembayaran luar prosedur) sejak dini guna mencegah potensi kerugian finansial perusahaan.
-    *   **5. Efektivitas Pelatihan Berbasis Data (Coaching ROI)**
-        *   Memetakan kebutuhan pembinaan (*coaching*) staf secara personal berdasarkan kelemahan komunikasi nyata yang tercatat di dashboard.
-*   **Talking Points**: "Dari sisi bisnis, VoiceGuard memberikan dampak terukur pada lima pilar utama perusahaan. Platform ini membantu meningkatkan peluang pendapatan (*revenue*), mereduksi biaya peninjauan manual (*operational cost*), menyamakan standar pelayanan (*brand image*), melindungi perusahaan dari risiko penyelewengan transaksi (*risk mitigation*), serta menargetkan program pelatihan staf (*coaching*) agar tepat sasaran dan efisien."
+    *   ✅ **Meningkatkan visibilitas operasional di seluruh jaringan cabang**
+    *   ✅ **Mendukung pengambilan keputusan berbasis data**
+    *   📊 **Monitoring kualitas layanan antar Point of Sale**
+    *   ✅ **Mengidentifikasi indikator risiko operasional lebih dini**
+*   **Talking Points**: "Dari sisi bisnis, VoiceGuard memberikan visibilitas operasional terpusat bagi manajemen untuk memantau performa layanan di seluruh jaringan cabang. Data objektif ini mendukung pengambilan keputusan strategis, mempermudah monitoring kualitas pelayanan di Point of Sale, serta mendeteksi setiap indikator risiko operasional sedini mungkin."
 
 ---
 
-## Slide 11: Demo Yang Akan Ditunjukkan Hari Ini (Prototype Scope)
+## Slide 11: Cakupan Demo & Perhitungan Kepatuhan (Demo Scope)
 *   **Isi Slide**:
-    *   **Fitur yang Telah Tersedia pada Prototipe**:
-        *   ✅ Live Speech-to-Text
-        *   ✅ Deteksi indikator percakapan secara real-time
-        *   ✅ Dashboard Analytics & Playback
-        *   ✅ WhatsApp Notification
-    *   **Rencana Pengembangan Berikutnya (Roadmap)**:
-        *   • Multi-branch analytics (Perbandingan performa antarcabang)
-        *   • Dashboard coaching & evaluasi berkelanjutan
-        *   • Export report terintegrasi
-        *   • Role management (Akses berjenjang)
-*   **Talking Points**: "Pada demo hari ini, kami akan memperlihatkan modul inti yang sudah matang dan berjalan stabil. Untuk pengembangan jangka panjang, VoiceGuard disiapkan untuk mendukung analisis multi-cabang terpusat serta modul pelatihan tim."
+    *   **Fitur Demo Utama**:
+        *   ✅ Live Speech-to-Text & Real-time Analysis
+        *   ✅ Dashboard Analytics Historis Terpusat
+        *   ✅ Audio Playback & Verification
+        *   ✅ WhatsApp Notification System
+    *   **8 Kategori Indikator yang Diuji**:
+        *   🟢 **Compliant (NORMAL)**: *Standard Greeting*, *Upsell & Cross-sell*
+        *   🟡 **Warning (SUSPICIOUS)**: *Unprofessional Language*, *Personal Contact*, *Outside Process*
+        *   🔴 **Alert (FRAUD)**: *Leasing Redirection*, *Payment Diversion*, *Data Manipulation*
+    *   **Rumus Kalkulasi SOP Compliance Score**:
+        *   Dihitung secara real-time berdasarkan proporsi percakapan yang patuh terhadap alur pelayanan:
+            $$\text{SOP Compliance Score} = \frac{\text{Segmen NORMAL}}{\text{Total Segmen}} \times 100\%$$
+*   **Talking Points**: "Pada sesi demo hari ini, kami akan memperlihatkan bagaimana VoiceGuard bekerja menangkap teks dan mendeteksi 8 kategori indikator secara real-time. Kami juga akan mendemonstrasikan bagaimana skor kepatuhan SOP dihitung secara transparan dan objektif dari persentase segmen normal terhadap total percakapan."
 
 ---
 
