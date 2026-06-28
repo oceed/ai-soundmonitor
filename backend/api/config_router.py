@@ -11,7 +11,12 @@ PATCH /api/config/prompt  → update system prompt
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 
 from api.auth import get_current_user
 from config import get_settings, runtime_config, compile_system_prompt, _DEFAULT_SYSTEM_PROMPT_BASE
