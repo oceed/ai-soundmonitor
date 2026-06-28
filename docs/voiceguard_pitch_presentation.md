@@ -59,7 +59,7 @@ Dokumen ini berisi draf slide presentasi tingkat eksekutif yang telah disempurna
 | :--- | :--- |
 | **Service Quality** | Tren komunikasi profesional, bahasa yang tidak sesuai, kualitas interaksi. |
 | **Sales Performance** | Frekuensi dan efektivitas komunikasi penawaran produk tambahan. |
-| **Operational Compliance** | Kepatuhan terhadap alur pelayanan dan SOP (dapat disesuaikan secara dinamis). |
+| **Operational Compliance** | Kepatuhan terhadap alur pelayanan dan SOP (seperti Standard Greeting pembuka, dll.). |
 | **Risk Monitoring** | Percakapan yang mengandung indikator risiko operasional. |
 | **Executive Analytics** | Perbandingan tren indikator antar cabang dan antar periode. |
 

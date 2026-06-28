@@ -189,6 +189,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
         {"key": "payment_diversion", "label": "Payment Diversion", "description": "Agen mengarahkan pembayaran ke rekening pribadi atau tidak resmi", "classification": "FRAUD"},
         {"key": "unprofessional_language", "label": "Unprofessional Language", "description": "Petugas menggunakan bahasa yang tidak sopan, nada merendahkan, ketidakramahan, atau emosional", "classification": "SUSPICIOUS"},
         {"key": "upsell_cross_sell", "label": "Upsell & Cross-sell", "description": "Agen menawarkan produk tambahan, top-up dana, atau produk pembiayaan lainnya", "classification": "NORMAL"},
+        {"key": "standard_greeting", "label": "Standard Greeting", "description": "Petugas mengucapkan salam pembuka resmi sesuai standar (seperti mengucapkan salam, menanyakan kabar, atau menawarkan bantuan di awal percakapan)", "classification": "NORMAL"},
     ],
     "alert_verdicts": ["FRAUD", "SUSPICIOUS"],
     "device_name": "VoiceGuard-Store-01",

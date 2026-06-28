@@ -95,6 +95,36 @@ async def lifespan(app: FastAPI):
         runtime_config.load_from_db_rows(rows)
         logger.info(f"[Startup] Loaded {len(rows)} config entries from DB")
 
+        # Self-healing: Ensure standard_greeting is dynamically added to existing databases
+        categories = runtime_config.get("fraud_categories", [])
+        has_greeting = any(c.get("key") == "standard_greeting" for c in categories)
+        if not has_greeting:
+            logger.info("[Startup] Adding 'standard_greeting' to fraud_categories dynamically")
+            categories.append({
+                "key": "standard_greeting",
+                "label": "Standard Greeting",
+                "description": "Petugas mengucapkan salam pembuka resmi sesuai standar (seperti mengucapkan salam, menanyakan kabar, atau menawarkan bantuan di awal percakapan)",
+                "classification": "NORMAL"
+            })
+            runtime_config.set("fraud_categories", categories)
+            
+            # Recompile prompt
+            from config import compile_system_prompt, _DEFAULT_SYSTEM_PROMPT_BASE
+            base_prompt = runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE)
+            compiled_prompt = compile_system_prompt(base_prompt, categories)
+            runtime_config.set("system_prompt", compiled_prompt)
+            
+            # Persist update
+            import json
+            for key, val in [("fraud_categories", categories), ("system_prompt", compiled_prompt)]:
+                db_entry = await db.get(ConfigEntry, key)
+                if db_entry:
+                    db_entry.value = json.dumps(val)
+                else:
+                    db.add(ConfigEntry(key=key, value=json.dumps(val)))
+            await db.commit()
+            logger.info("[Startup] Successfully persisted dynamic standard_greeting category to DB")
+
     # 5. Init pipeline
     db_writer = DBWriter()
     _orchestrator = PipelineOrchestrator(
