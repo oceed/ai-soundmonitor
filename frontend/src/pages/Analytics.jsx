@@ -13,15 +13,21 @@ export function Analytics() {
   const [customEndDate, setCustomEndDate] = useState('')
   const { addToast } = useToast()
 
-  // Fetch Category definitions
+  const [counterFilter, setCounterFilter] = useState('ALL')
+  const [counters, setCounters] = useState([])
+
+  // Fetch Category & Counter definitions
   useEffect(() => {
     getConfig()
       .then(cfg => {
         if (cfg?.fraud_categories) {
           setCategories(cfg.fraud_categories)
         }
+        if (cfg?.counters) {
+          setCounters(cfg.counters)
+        }
       })
-      .catch(err => console.error('Failed to load categories in Analytics:', err))
+      .catch(err => console.error('Failed to load initial config in Analytics:', err))
   }, [])
 
   const loadData = async () => {
@@ -50,7 +56,9 @@ export function Analytics() {
     }
 
     try {
-      const res = await getAnalytics({ date_from: dateFrom, date_to: dateTo })
+      const params = { date_from: dateFrom, date_to: dateTo }
+      if (counterFilter !== 'ALL') params.counter_id = counterFilter
+      const res = await getAnalytics(params)
       setData(res)
     } catch (err) {
       addToast({
@@ -65,7 +73,7 @@ export function Analytics() {
 
   useEffect(() => {
     loadData()
-  }, [timeFilter, customStartDate, customEndDate])
+  }, [timeFilter, customStartDate, customEndDate, counterFilter])
 
   const getFriendlyCategory = (key) => {
     const cat = categories.find(c => c.key === key)
@@ -92,6 +100,18 @@ export function Analytics() {
 
         {/* Filter controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <select
+            className="form-input"
+            value={counterFilter}
+            onChange={e => setCounterFilter(e.target.value)}
+            style={{ width: 150 }}
+          >
+            <option value="ALL">All Counters</option>
+            {counters.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
           <select
             className="form-input"
             value={timeFilter}

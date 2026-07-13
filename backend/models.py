@@ -59,6 +59,7 @@ class RecordingSession(Base):
     suspicious_count: Mapped[int] = mapped_column(Integer, default=0)
     clear_count: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
+    counter_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
 
     segments: Mapped[List["Segment"]] = relationship("Segment", back_populates="session")
     continuous_recordings: Mapped[List["ContinuousRecording"]] = relationship("ContinuousRecording", back_populates="session", cascade="all, delete-orphan")
@@ -84,6 +85,7 @@ class Segment(Base):
     reason: Mapped[str] = mapped_column(Text, default="")
     fraud_flags: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
     evidence: Mapped[Optional[List]] = mapped_column(JSON, nullable=True)
+    counter_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
 
     # Performance
     stt_ms: Mapped[int] = mapped_column(Integer, default=0)
@@ -115,6 +117,7 @@ class Alert(Base):
     flags: Mapped[Optional[List]] = mapped_column(JSON, nullable=True)
     evidence: Mapped[Optional[List]] = mapped_column(JSON, nullable=True)
     transcript: Mapped[str] = mapped_column(Text, default="")
+    counter_id: Mapped[str] = mapped_column(String(64), default="default", index=True)
 
     # Recording
     recording_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

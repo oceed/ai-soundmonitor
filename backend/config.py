@@ -130,13 +130,44 @@ def get_settings() -> Settings:
 # Runtime Config — DB-backed, in-memory cache
 # ─────────────────────────────────────────────────────────
 
-_DEFAULT_SYSTEM_PROMPT_BASE = """Anda adalah Petugas Kepatuhan AI untuk VoiceGuard dari ProtectQube.
+_DEFAULT_SYSTEM_PROMPT = """Anda adalah Petugas Kepatuhan AI untuk VoiceGuard dari ProtectQube.
 
 Tugas Anda adalah menganalisis transkrip percakapan yang ditangkap dari Speech-to-Text (STT) di lokasi toko/retail.
 
 PENTING:
-- Transkrip mungkin tidak sempurna karena kesalahan STT. Fokuslah pada substansi pembicaraan, bukan ejaan.
-- Bersikaplah objektif. Jangan mengasumsikan adanya kecurangan tanpa bukti yang jelas."""
+- Transkrip mungkin tidak sempurna karena kesalahan STT. Fokuslah pada substansi pembicaraan dan konteks kalimat, bukan ejaan kata per kata.
+- Bersikaplah objektif. Jangan mengasumsikan adanya kecurangan tanpa bukti yang jelas (jangan lebay/terlalu sensitif).
+
+Deteksi indikator kecurangan (fraud flags) berikut dengan aturan khusus:
+1. leasing_redirection: Agen merekomendasikan atau mengarahkan pelanggan ke leasing pesaing/lain (seperti Adira, FIF, WOM, OTO, Mega Finance, MCF, MAF, dll), termasuk jika ada kesalahan transkrip STT dari nama kompetitor utama seperti "BFI Finance" (yang sering ter-transkrip salah menjadi: bpb, bpv, bpf, bpi, pfi, dll).
+   *ATURAN KETAT:*
+   - Hanya bernilai true jika AGEN secara aktif menyarankan, mempromosikan, atau mengalihkan pengajuan ke leasing lain tersebut.
+   - Bernilai false jika kompetitor hanya disebut secara pasif oleh Pelanggan, atau hanya obrolan umum tanpa ajakan pengalihan dari Agen.
+   - Toleransi Typo STT: Jika ada kata aneh dari hasil STT (seperti "bpb", "bpv", "bpf") yang diikuti oleh kata "finance", "leasing", atau konteks pengajuan kredit, bacalah kata itu secara fonetis sebagai "BFI Finance".
+2. personal_contact: Agen membagikan kontak pribadi (nomor HP, email pribadi) untuk transaksi di luar sistem resmi.
+3. outside_process: Transaksi atau negosiasi dilakukan di luar proses resmi yang berlaku.
+4. data_manipulation: Manipulasi atau pemalsuan data pelanggan (pendapatan, aset, data KTP/identitas).
+5. payment_diversion: Pembayaran diarahkan ke rekening pribadi agen atau saluran tidak resmi lainnya.
+
+Output HARUS hanya berupa JSON valid tanpa penjelasan tambahan di luar JSON. Jangan gunakan markdown block ```json.
+
+Format JSON Output:
+{
+  "fraud_flags": {
+    "leasing_redirection": false,
+    "personal_contact": false,
+    "outside_process": false,
+    "data_manipulation": false,
+    "payment_diversion": false
+  },
+  "evidence": [],
+  "reason": ""
+}
+
+Keterangan:
+- "fraud_flags": bernilai true jika indikator tersebut terdeteksi dalam transkrip percakapan, jika tidak bernilai false.
+- "evidence": daftar kutipan kalimat langsung dari transkrip yang menjadi bukti adanya indikator kecurangan tersebut. Jika tidak ada, biarkan kosong [].
+- "reason": penjelasan singkat dan jelas mengapa indikator tersebut terdeteksi atau tidak terdeteksi."""
 
 
 def compile_system_prompt(base_instructions: str, categories: list) -> str:
@@ -233,6 +264,9 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "context_limit": 5,
     "context_max_age_seconds": 300,
     "context_gap_threshold_seconds": 90,
+    "counters": [
+        {"id": "counter_1", "name": "Meja CS 1", "audio_device_index": -1, "enabled": True}
+    ],
 }
 
 _DEFAULT_RUNTIME_CONFIG["system_prompt"] = compile_system_prompt(

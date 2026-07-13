@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 @router.get("")
 async def list_alerts(
     verdict: Optional[str] = Query(None, description="Filter by verdict: FRAUD, SUSPICIOUS"),
+    counter_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     session_id: Optional[int] = Query(None),
@@ -65,6 +66,9 @@ async def list_alerts(
     if session_id:
         q = q.where(Alert.session_id == session_id)
 
+    if counter_id:
+        q = q.where(Alert.counter_id == counter_id)
+
     # Count total
     count_q = select(func.count()).select_from(q.subquery())
     total = (await db.execute(count_q)).scalar_one()
@@ -85,6 +89,7 @@ async def list_alerts(
 async def get_stats(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    counter_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -105,6 +110,9 @@ async def get_stats(
             q = q.where(Alert.timestamp <= dt)
         except ValueError:
             pass
+
+    if counter_id:
+        q = q.where(Alert.counter_id == counter_id)
 
     result = await db.execute(q)
     alerts = result.scalars().all()
@@ -164,6 +172,7 @@ def _alert_to_dict(a: Alert) -> dict:
         "id": a.id,
         "segment_id": a.segment_id,
         "session_id": a.session_id,
+        "counter_id": getattr(a, "counter_id", "default"),
         "timestamp": a.timestamp.replace(tzinfo=timezone.utc).isoformat() if a.timestamp else None,
         "verdict": a.verdict,
         "classification": a.verdict,  # for compatibility

@@ -52,12 +52,22 @@ logger = logging.getLogger(__name__)
 # Global Singletons
 # ─────────────────────────────────────────────────────────
 
-_orchestrator: Optional[PipelineOrchestrator] = None
+_orchestrators: Dict[str, PipelineOrchestrator] = {}
 _scheduler = None
 
 
-def get_orchestrator() -> Optional[PipelineOrchestrator]:
-    return _orchestrator
+def get_orchestrators() -> Dict[str, PipelineOrchestrator]:
+    return _orchestrators
+
+
+def get_orchestrator(counter_id: Optional[str] = None) -> Optional[PipelineOrchestrator]:
+    if counter_id:
+        return _orchestrators.get(counter_id)
+    if _orchestrators:
+        if "default" in _orchestrators:
+            return _orchestrators["default"]
+        return list(_orchestrators.values())[0]
+    return None
 
 
 # ─────────────────────────────────────────────────────────
@@ -66,7 +76,7 @@ def get_orchestrator() -> Optional[PipelineOrchestrator]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _orchestrator, _scheduler
+    global _orchestrators, _scheduler
 
     settings = get_settings()
 
@@ -125,16 +135,31 @@ async def lifespan(app: FastAPI):
             await db.commit()
             logger.info("[Startup] Successfully persisted dynamic standard_greeting category to DB")
 
-    # 5. Init pipeline
+    # 5. Init pipelines
     db_writer = DBWriter()
-    _orchestrator = PipelineOrchestrator(
-        settings=settings,
-        runtime_config=runtime_config,
-        broadcast_fn=ws_manager.broadcast,
-        db_writer=db_writer,
-    )
+    counters = runtime_config.get("counters", [])
+    if not counters:
+        counters = [{"id": "default", "name": "Default Counter", "audio_device_index": -1, "enabled": True}]
+    
     loop = asyncio.get_running_loop()
-    _orchestrator.start(loop)
+    for c in counters:
+        if not c.get("enabled", True):
+            continue
+        c_id = c["id"]
+        c_name = c["name"]
+        c_device = c.get("audio_device_index", -1)
+        
+        orch = PipelineOrchestrator(
+            settings=settings,
+            runtime_config=runtime_config,
+            broadcast_fn=ws_manager.broadcast,
+            db_writer=db_writer,
+            counter_id=c_id,
+            counter_name=c_name,
+            override_device_index=c_device,
+        )
+        _orchestrators[c_id] = orch
+        orch.start(loop)
 
     # 6. Start background tasks
     rms_task    = asyncio.create_task(rms_broadcast_task())
@@ -163,8 +188,9 @@ async def lifespan(app: FastAPI):
     logger.info("[Shutdown] Stopping services...")
     rms_task.cancel()
     device_task.cancel()
-    if _orchestrator:
-        _orchestrator.stop()
+    for orch in list(_orchestrators.values()):
+        orch.stop()
+    _orchestrators.clear()
     if _scheduler:
         _scheduler.shutdown(wait=False)
     logger.info("[Shutdown] Done.")
@@ -211,30 +237,95 @@ from models import User
 
 
 @app.post("/api/pipeline/start")
-async def pipeline_start(_: User = Depends(get_current_user)):
-    if _orchestrator and _orchestrator.is_running:
-        return {"message": "Pipeline already running"}
+async def pipeline_start(counter_id: Optional[str] = None, _: User = Depends(get_current_user)):
     loop = asyncio.get_running_loop()
-    _orchestrator.start(loop)
-    return {"message": "Pipeline started"}
+    db_writer = DBWriter()
+    
+    counters = runtime_config.get("counters", [])
+    if not counters:
+        counters = [{"id": "default", "name": "Default Counter", "audio_device_index": -1, "enabled": True}]
+        
+    target_counters = [c for c in counters if c.get("enabled", True)]
+    if counter_id:
+        target_counters = [c for c in target_counters if c["id"] == counter_id]
+        if not target_counters:
+            return {"message": f"Counter {counter_id} not found or disabled"}
+
+    for c in target_counters:
+        c_id = c["id"]
+        c_name = c["name"]
+        c_device = c.get("audio_device_index", -1)
+        
+        orch = _orchestrators.get(c_id)
+        if orch and orch.is_running:
+            continue
+        
+        if not orch:
+            orch = PipelineOrchestrator(
+                settings=settings,
+                runtime_config=runtime_config,
+                broadcast_fn=ws_manager.broadcast,
+                db_writer=db_writer,
+                counter_id=c_id,
+                counter_name=c_name,
+                override_device_index=c_device,
+            )
+            _orchestrators[c_id] = orch
+        orch.start(loop)
+        
+    return {"message": "Pipeline started", "started": [c["id"] for c in target_counters]}
 
 
 @app.post("/api/pipeline/stop")
-async def pipeline_stop(_: User = Depends(get_current_user)):
-    if _orchestrator:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _orchestrator.stop)
-    return {"message": "Pipeline stopped"}
+async def pipeline_stop(counter_id: Optional[str] = None, _: User = Depends(get_current_user)):
+    loop = asyncio.get_running_loop()
+    
+    if counter_id:
+        orch = _orchestrators.get(counter_id)
+        if orch:
+            await loop.run_in_executor(None, orch.stop)
+            del _orchestrators[counter_id]
+        return {"message": f"Pipeline stopped for counter {counter_id}"}
+    else:
+        for c_id, orch in list(_orchestrators.items()):
+            await loop.run_in_executor(None, orch.stop)
+        _orchestrators.clear()
+        return {"message": "All pipelines stopped"}
 
 
 @app.get("/api/pipeline/status")
 async def pipeline_status(_: User = Depends(get_current_user)):
-    if _orchestrator:
-        return {
-            "running": _orchestrator.is_running,
-            "stats": _orchestrator.stats,
-        }
-    return {"running": False, "stats": {}}
+    counters = runtime_config.get("counters", [])
+    if not counters:
+        counters = [{"id": "default", "name": "Default Counter", "audio_device_index": -1, "enabled": True}]
+        
+    status_map = {}
+    for c in counters:
+        c_id = c["id"]
+        orch = _orchestrators.get(c_id)
+        if orch:
+            status_map[c_id] = {
+                "id": c_id,
+                "name": c["name"],
+                "enabled": c.get("enabled", True),
+                "running": orch.is_running,
+                "stats": orch.stats,
+            }
+        else:
+            status_map[c_id] = {
+                "id": c_id,
+                "name": c["name"],
+                "enabled": c.get("enabled", True),
+                "running": False,
+                "stats": {},
+            }
+            
+    first_orch = get_orchestrator()
+    return {
+        "running": any(o.is_running for o in _orchestrators.values()),
+        "stats": first_orch.stats if first_orch else {},
+        "counters": status_map,
+    }
 
 
 # ─────────────────────────────────────────────────────────
@@ -245,6 +336,6 @@ async def pipeline_status(_: User = Depends(get_current_user)):
 async def health():
     return {
         "status": "ok",
-        "pipeline_running": _orchestrator.is_running if _orchestrator else False,
+        "pipeline_running": any(o.is_running for o in _orchestrators.values()),
         "ws_clients": ws_manager.client_count,
     }

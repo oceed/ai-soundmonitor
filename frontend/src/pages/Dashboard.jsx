@@ -390,168 +390,248 @@ function VadIndicator({ vadState }) {
    Main Dashboard
 ══════════════════════════════════════════════════════════ */
 export function Dashboard({ liveEvents, pipelineStatus }) {
-  const [rms, setRms] = useState(0)
-  const [vadState, setVadState] = useState('silence')
-  const [feed, setFeed] = useState([])
-  const [stats, setStats] = useState({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
-  const [activeSessionId, setActiveSessionId] = useState(null)
-  const [lastVerdict, setLastVerdict] = useState(null)
-  const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [activeCounterId, setActiveCounterId] = useState('all') // 'all' or specific cId
+  const [countersState, setCountersState] = useState({})
   const [playingRecording, setPlayingRecording] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [pipelineLoading, setPipelineLoading] = useState(false)
   const feedRef = useRef(null)
   const { addToast } = useToast()
-  const [categories, setCategories] = useState([])
 
+  // Load configuration and counters list on mount
   useEffect(() => {
     getConfig()
       .then(cfg => {
         if (cfg?.fraud_categories) {
           setCategories(cfg.fraud_categories)
         }
-      })
-      .catch(err => console.error('Failed to load categories:', err))
-  }, [activeSessionId])
-
-  /* Sync stats and session ID from pipeline status, or fetch latest session from database */
-  useEffect(() => {
-    if (pipelineStatus?.running && pipelineStatus?.stats?.session_id) {
-      setActiveSessionId(pipelineStatus.stats.session_id)
-      setStats({
-        FRAUD:      pipelineStatus.stats.FRAUD      || 0,
-        SUSPICIOUS: pipelineStatus.stats.SUSPICIOUS || 0,
-        NORMAL:     pipelineStatus.stats.NORMAL     || 0,
-        segments:   pipelineStatus.stats.segments   || 0,
-      })
-    } else {
-      getSessions({ limit: 1 })
-        .then(data => {
-          if (data?.items && data.items.length > 0) {
-            const latest = data.items[0]
-            setActiveSessionId(latest.id)
-            setStats({
-              FRAUD:      latest.fraud_count      || 0,
-              SUSPICIOUS: latest.suspicious_count || 0,
-              NORMAL:     latest.clear_count      || 0,
-              segments:   latest.total_segments   || 0,
+        if (cfg?.counters) {
+          setCountersState(prev => {
+            const newState = { ...prev }
+            cfg.counters.forEach(c => {
+              if (!newState[c.id]) {
+                newState[c.id] = {
+                  id: c.id,
+                  name: c.name,
+                  running: false,
+                  active_mic_name: '',
+                  rms: 0,
+                  vadState: 'silence',
+                  lastVerdict: null,
+                  stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+                  feed: [],
+                }
+              }
             })
-          } else {
-            setActiveSessionId(null)
-            setStats({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
+            return newState
+          })
+        }
+      })
+      .catch(err => console.error('Failed to load initial config:', err))
+  }, [])
+
+  // Sync counter run-state and database session-ids from pipelineStatus updates
+  useEffect(() => {
+    if (pipelineStatus?.counters) {
+      setCountersState(prev => {
+        const newState = { ...prev }
+        Object.keys(pipelineStatus.counters).forEach(cId => {
+          const c = pipelineStatus.counters[cId]
+          const existing = prev[cId] || {
+            id: cId,
+            name: c.name || cId,
+            rms: 0,
+            vadState: 'silence',
+            lastVerdict: null,
+            feed: [],
+            stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+          }
+          newState[cId] = {
+            ...existing,
+            id: cId,
+            name: c.name || cId,
+            running: c.running,
+            active_mic_name: c.stats?.active_mic_name || '',
+            stats: {
+              FRAUD: c.stats?.FRAUD || 0,
+              SUSPICIOUS: c.stats?.SUSPICIOUS || 0,
+              NORMAL: c.stats?.NORMAL || 0,
+              segments: c.stats?.segments || 0,
+            },
+            activeSessionId: c.stats?.session_id || null,
           }
         })
-        .catch(err => {
-          console.error('Failed to load latest session:', err)
-          setActiveSessionId(null)
-          setStats({ FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 })
-        })
+        return newState
+      })
     }
   }, [pipelineStatus])
 
-  /* Load initial feed when activeSessionId changes */
+  // Load initial segment history for each counter
   useEffect(() => {
-    if (!activeSessionId) { setFeed([]); return }
-
-    getSegments({ session_id: activeSessionId, limit: MAX_FEED })
+    getSegments({ limit: 100 })
       .then(data => {
         if (data?.items) {
-          setFeed(data.items.map(s => ({
-            id: s.id,
-            timestamp: s.timestamp,
-            verdict: s.verdict,
-            classification: s.verdict,
-            confidence: s.confidence,
-            transcript: s.transcript,
-            reason: s.reason,
-            flags: s.flags || [],
-            stt_ms: s.stt_ms,
-            llm_ms: s.llm_ms,
-            stt_mode: s.stt_mode,
-            llm_mode: s.llm_mode,
-            has_recording: s.has_recording,
-            alert_id: s.alert_id,
-          })))
+          setCountersState(prev => {
+            const newState = { ...prev }
+            // Clear feeds first
+            Object.keys(newState).forEach(cId => {
+              if (newState[cId]) {
+                newState[cId].feed = []
+              }
+            })
+
+            data.items.forEach(s => {
+              const cId = s.counter_id || 'default'
+              if (!newState[cId]) {
+                newState[cId] = {
+                  id: cId,
+                  name: cId === 'default' ? 'Default Counter' : cId,
+                  running: false,
+                  rms: 0,
+                  vadState: 'silence',
+                  lastVerdict: null,
+                  stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+                  feed: [],
+                }
+              }
+              newState[cId].feed.push({
+                id: s.id,
+                timestamp: s.timestamp,
+                verdict: s.verdict,
+                classification: s.verdict,
+                confidence: s.confidence,
+                transcript: s.transcript,
+                reason: s.reason,
+                flags: s.flags || [],
+                stt_ms: s.stt_ms,
+                llm_ms: s.llm_ms,
+                stt_mode: s.stt_mode,
+                llm_mode: s.llm_mode,
+                has_recording: s.has_recording,
+                alert_id: s.alert_id,
+              })
+            })
+            return newState
+          })
         }
       })
-      .catch(err => console.error('Failed to load segments:', err))
-  }, [activeSessionId])
+      .catch(err => console.error('Failed to load segment history:', err))
+  }, [pipelineStatus])
 
-  /* WebSocket event processor */
+  // WebSocket event processor for real-time VU levels, VAD indicators, and classification verdicts
   useEffect(() => {
     if (!liveEvents || liveEvents.length === 0) return
     const event = liveEvents[liveEvents.length - 1]
     if (!event) return
 
-    switch (event.type) {
-      case 'audio_level':
-        setRms(event.rms || 0)
-        setVadState(event.vad_state || 'silence')
-        break
+    const cId = event.counter_id || 'default'
 
-      case 'vad_state':
-        setVadState(event.state)
-        break
+    setCountersState(prev => {
+      // Create lazy defaults if a counter sends events but is not yet in state
+      const current = prev[cId] || {
+        id: cId,
+        name: cId === 'default' ? 'Default Counter' : cId,
+        running: false,
+        rms: 0,
+        vadState: 'silence',
+        lastVerdict: null,
+        stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+        feed: [],
+      }
 
-      case 'segment_result':
-        setLastVerdict(event.verdict)
-        setFeed(prev => [{
-          id:             event.segment_id || Date.now(),
-          timestamp:      event.timestamp || new Date().toISOString(),
-          verdict:        event.verdict,
-          classification: event.classification || event.verdict,
-          confidence:     event.confidence,
-          transcript:     event.transcript,
-          reason:         event.reason,
-          flags:          event.flags || [],
-          stt_ms:         event.stt_ms,
-          llm_ms:         event.llm_ms,
-          has_recording:  false,
-          alert_id:       null,
-        }, ...prev].slice(0, MAX_FEED))
-        setStats(prev => ({
-          ...prev,
-          segments: (prev.segments || 0) + 1,
-          [event.verdict]: (prev[event.verdict] || 0) + 1,
-        }))
-        break
+      const updated = { ...current }
 
-      case 'alert':
-        setFeed(prev => prev.map(item =>
-          item.id === event.segment_id ? { ...item, alert_id: event.alert_id } : item
-        ))
-        addToast({
-          type:     event.verdict === 'FRAUD' ? 'fraud' : 'warning',
-          title:    `${event.verdict === 'FRAUD' ? '⚠ FRAUD DETECTED' : '◈ SUSPICIOUS'}`,
-          body:     event.reason?.slice(0, 120) || '',
-          duration: 8000,
-        })
-        break
+      switch (event.type) {
+        case 'audio_level':
+          updated.rms = event.rms || 0
+          updated.vadState = event.vad_state || 'silence'
+          break
 
-      case 'alert_recording_ready':
-        setFeed(prev => prev.map(item =>
-          (item.alert_id === event.alert_id || item.id === event.segment_id)
-            ? { ...item, has_recording: true, alert_id: event.alert_id }
-            : item
-        ))
-        break
+        case 'vad_state':
+          updated.vadState = event.state
+          break
 
-      case 'pipeline_status':
-        if (event.stats) {
-          setStats({
-            FRAUD:      event.stats.FRAUD      || 0,
-            SUSPICIOUS: event.stats.SUSPICIOUS || 0,
-            NORMAL:     event.stats.NORMAL     || 0,
-            segments:   event.stats.segments   || 0,
+        case 'segment_result':
+          updated.lastVerdict = event.verdict
+          updated.feed = [{
+            id:             event.segment_id || Date.now(),
+            timestamp:      event.timestamp || new Date().toISOString(),
+            verdict:        event.verdict,
+            classification: event.classification || event.verdict,
+            confidence:     event.confidence,
+            transcript:     event.transcript,
+            reason:         event.reason,
+            flags:          event.flags || [],
+            stt_ms:         event.stt_ms,
+            llm_ms:         event.llm_ms,
+            has_recording:  false,
+            alert_id:       null,
+          }, ...current.feed].slice(0, MAX_FEED)
+
+          updated.stats = {
+            ...current.stats,
+            segments: (current.stats.segments || 0) + 1,
+            [event.verdict]: (current.stats[event.verdict] || 0) + 1,
+          }
+          break
+
+        case 'alert':
+          updated.feed = current.feed.map(item =>
+            item.id === event.segment_id ? { ...item, alert_id: event.alert_id } : item
+          )
+          addToast({
+            type:     event.verdict === 'FRAUD' ? 'fraud' : 'warning',
+            title:    `${event.verdict === 'FRAUD' ? '⚠ FRAUD DETECTED' : '◈ SUSPICIOUS'} - ${current.name}`,
+            body:     event.reason?.slice(0, 120) || '',
+            duration: 8000,
           })
-        }
-        break
-    }
+          break
+
+        case 'alert_recording_ready':
+          updated.feed = current.feed.map(item =>
+            (item.alert_id === event.alert_id || item.id === event.segment_id)
+              ? { ...item, has_recording: true, alert_id: event.alert_id }
+              : item
+          )
+          break
+
+        case 'pipeline_status':
+          if (event.counters && event.counters[cId]) {
+            const cs = event.counters[cId]
+            updated.running = cs.running
+            if (cs.stats) {
+              updated.stats = {
+                FRAUD: cs.stats.FRAUD || 0,
+                SUSPICIOUS: cs.stats.SUSPICIOUS || 0,
+                NORMAL: cs.stats.NORMAL || 0,
+                segments: cs.stats.segments || 0,
+              }
+              updated.activeSessionId = cs.stats.session_id || null
+              updated.active_mic_name = cs.stats.active_mic_name || ''
+            }
+          }
+          break
+      }
+
+      return {
+        ...prev,
+        [cId]: updated
+      }
+    })
   }, [liveEvents, addToast])
 
-  const handleTogglePipeline = async () => {
+  // Start or Stop the pipeline for a single counter/mic
+  const handleToggleCounter = async (counterId) => {
+    const c = countersState[counterId]
+    if (!c) return
+
     setPipelineLoading(true)
     try {
-      if (pipelineStatus?.running) await stopPipeline()
-      else await startPipeline()
+      if (c.running) {
+        await stopPipeline(counterId)
+      } else {
+        await startPipeline(counterId)
+      }
     } catch (e) {
       addToast({ type: 'warning', title: 'Pipeline error', body: e.message })
     } finally {
@@ -559,10 +639,43 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
     }
   }
 
-  const isRunning = pipelineStatus?.running
+  // Start or Stop ALL counters concurrently
+  const handleToggleAll = async (stopAll = false) => {
+    setPipelineLoading(true)
+    try {
+      if (stopAll) {
+        await stopPipeline()
+        addToast({ type: 'info', title: 'All counters stopped' })
+      } else {
+        await startPipeline()
+        addToast({ type: 'success', title: 'All counters started' })
+      }
+    } catch (e) {
+      addToast({ type: 'warning', title: 'Pipeline error', body: e.message })
+    } finally {
+      setPipelineLoading(false)
+    }
+  }
 
-  /* Derived: recent fraud/sus count for alert strip */
-  const recentBad = useMemo(() => feed.filter(f => f.verdict === 'FRAUD' || f.verdict === 'SUSPICIOUS').slice(0, 3), [feed])
+  // Derive aggregate stats across all counters
+  const aggregateStats = useMemo(() => {
+    const agg = { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 }
+    Object.values(countersState).forEach(c => {
+      agg.FRAUD += c.stats?.FRAUD || 0
+      agg.SUSPICIOUS += c.stats?.SUSPICIOUS || 0
+      agg.NORMAL += c.stats?.NORMAL || 0
+      agg.segments += c.stats?.segments || 0
+    })
+    return agg
+  }, [countersState])
+
+  // Derive active focus counter details
+  const focusedCounter = activeCounterId === 'all' ? null : countersState[activeCounterId]
+
+  const stats = useMemo(() => {
+    if (activeCounterId === 'all') return aggregateStats
+    return focusedCounter?.stats || { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 }
+  }, [activeCounterId, aggregateStats, focusedCounter])
 
   const sopScore = useMemo(() => {
     const total = stats.segments || 0
@@ -570,6 +683,31 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
     const nonCompliant = (stats.FRAUD || 0) + (stats.SUSPICIOUS || 0)
     return Math.max(0, Math.round(((total - nonCompliant) / total) * 100))
   }, [stats])
+
+  // Combine and sort feeds depending on the selected filter
+  const combinedFeed = useMemo(() => {
+    if (activeCounterId !== 'all') {
+      const c = countersState[activeCounterId]
+      if (!c) return []
+      return c.feed.map(item => ({ ...item, counterName: c.name }))
+    }
+
+    const items = []
+    Object.keys(countersState).forEach(cId => {
+      const c = countersState[cId]
+      c.feed.forEach(item => {
+        items.push({ ...item, counterId: cId, counterName: c.name })
+      })
+    })
+
+    return items
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, MAX_FEED)
+  }, [activeCounterId, countersState])
+
+  const recentBad = useMemo(() => {
+    return combinedFeed.filter(f => f.verdict === 'FRAUD' || f.verdict === 'SUSPICIOUS').slice(0, 3)
+  }, [combinedFeed])
 
   const getScoreColor = (score) => {
     if (score >= 90) return 'var(--clear)'
@@ -582,6 +720,8 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
     if (score >= 75) return '⚠️'
     return '🚨'
   }
+
+  const isRunning = Object.values(countersState).some(c => c.running)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -598,30 +738,181 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             Live Monitor
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-            Real-time fraud detection · Session #{activeSessionId || '—'}
+            Monitoring {Object.keys(countersState).length} desks · {activeCounterId === 'all' ? 'All Counters Selected' : `Selected: ${focusedCounter?.name}`}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ProcessingState events={liveEvents} />
-          <button
-            id="pipeline-toggle-btn"
-            className={`btn ${isRunning ? 'btn-danger' : 'btn-primary'}`}
-            onClick={handleTogglePipeline}
-            disabled={pipelineLoading}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleToggleAll(false)}
+              disabled={pipelineLoading}
+              style={{ fontSize: 12 }}
+            >
+              ▶ Start All
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => handleToggleAll(true)}
+              disabled={pipelineLoading}
+              style={{ fontSize: 12 }}
+            >
+              ⏹ Stop All
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Counters Grid Selection (Top Section) ── */}
+      <div style={{ padding: '16px 24px 8px', flexShrink: 0, borderBottom: '1px solid var(--border-light)' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 10 }}>
+          Customer Service Counters
+        </div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+          gap: 12,
+        }}>
+          {/* "All Counters" selector card */}
+          <div
+            onClick={() => setActiveCounterId('all')}
+            style={{
+              background: 'var(--bg-card)',
+              border: activeCounterId === 'all' ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '12px 14px',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              transition: 'all var(--t-fast)',
+              boxShadow: activeCounterId === 'all' ? '0 0 10px rgba(124,106,247,0.1)' : 'none',
+            }}
           >
-            {pipelineLoading ? <span className="spinner" style={{ width: 13, height: 13 }} /> : null}
-            {isRunning ? '⏹ Stop' : '▶ Start Pipeline'}
-          </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>All Counters (Overview)</span>
+              <span style={{ fontSize: 10, color: 'var(--accent-light)', fontWeight: 600 }}>AGGREGATE</span>
+            </div>
+            <div style={{ height: 18, margin: '8px 0', fontSize: 11, color: 'var(--text-muted)' }}>
+              Showing consolidated live audio feed
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-dim)' }}>
+              <span>Total CS: {Object.keys(countersState).length}</span>
+              <span>Total Segs: {aggregateStats.segments}</span>
+            </div>
+          </div>
+
+          {/* Individual Counter Cards */}
+          {Object.keys(countersState).map(cId => {
+            const c = countersState[cId]
+            const isSelected = activeCounterId === cId
+            const isBad = c.lastVerdict === 'FRAUD' || c.lastVerdict === 'SUSPICIOUS'
+
+            return (
+              <div
+                key={cId}
+                onClick={() => setActiveCounterId(cId)}
+                style={{
+                  background: 'var(--bg-card)',
+                  border: isSelected
+                    ? '1.5px solid var(--accent)'
+                    : isBad
+                      ? '1px solid var(--fraud-border)'
+                      : '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  transition: 'all var(--t-fast)',
+                  boxShadow: isSelected ? '0 0 10px rgba(124,106,247,0.1)' : 'none',
+                  ...(isBad && c.lastVerdict === 'FRAUD' ? { boxShadow: '0 0 8px var(--fraud-glow)' } : {}),
+                }}
+              >
+                {/* Card Title & State */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className={`status-dot ${c.running ? 'status-dot-green' : 'status-dot-gray'} ${c.vadState === 'speech' ? 'status-dot-pulse' : ''}`} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{c.name}</span>
+                  </div>
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: 4,
+                    background: c.running ? 'rgba(46,204,113,0.12)' : 'rgba(120,120,120,0.12)',
+                    color: c.running ? 'var(--clear)' : 'var(--text-muted)'
+                  }}>{c.running ? 'ACTIVE' : 'OFFLINE'}</span>
+                </div>
+
+                {/* Real-time VU Levels */}
+                <div style={{
+                  height: 22,
+                  background: 'var(--bg-elevated)',
+                  borderRadius: 5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 8px',
+                  justifyContent: 'space-between',
+                  fontSize: 10,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  <span style={{ color: 'var(--text-secondary)', zIndex: 2, fontSize: 9 }}>
+                    {c.running ? (c.vadState === 'speech' ? '🎙️ Speech' : 'Silence') : 'Offline'}
+                  </span>
+                  {c.running && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)', zIndex: 2 }}>
+                      {Math.round(c.rms)}
+                    </span>
+                  )}
+                  {/* Dynamic RMS fill background */}
+                  {c.running && (
+                    <div style={{
+                      position: 'absolute',
+                      left: 0, top: 0, bottom: 0,
+                      width: `${Math.min((c.rms / 2000) * 100, 100)}%`,
+                      background: c.vadState === 'speech' ? 'var(--accent-glow)' : 'rgba(255,255,255,0.03)',
+                      transition: 'width 0.1s ease',
+                      zIndex: 1,
+                    }} />
+                  )}
+                </div>
+
+                {/* Counters Metrics & Control Action */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', display: 'flex', gap: 6 }}>
+                    <span>Segs: <strong>{c.stats.segments}</strong></span>
+                    {c.stats.FRAUD > 0 && <span style={{ color: 'var(--fraud)' }}>F: {c.stats.FRAUD}</span>}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleToggleCounter(cId) }}
+                    className={`btn ${c.running ? 'btn-danger' : 'btn-primary'}`}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: 9,
+                      borderRadius: 4,
+                    }}
+                    disabled={pipelineLoading}
+                  >
+                    {c.running ? '⏹ Stop' : '▶ Start'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
       {/* ── Stat bar (5 cards) ── */}
-      <div className="stat-bar">
+      <div className="stat-bar" style={{ flexShrink: 0, borderBottom: '1px solid var(--border-light)' }}>
         {[
           {
-            label: 'Total Segments',
+            label: 'Segments',
             value: stats.segments,
-            sub: `This session`,
+            sub: activeCounterId === 'all' ? 'Across all active CS' : 'Selected counter',
             color: 'var(--accent-light)',
             icon: '◎',
           },
@@ -693,20 +984,30 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
 
         {/* Left panel: audio + system + distribution */}
         <div className="dashboard-left-panel">
-          {/* Audio Visualizer card */}
+          {/* Audio Visualizer card (Active counter or generic) */}
           <div className="card" style={{ padding: '14px 16px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span className="section-label">Audio Input</span>
-              <VadIndicator vadState={vadState} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', marginBottom: 10 }}>
+              <span className="section-label">
+                Audio Visualizer {focusedCounter ? `(${focusedCounter.name})` : '(Combined Overview)'}
+              </span>
+              <VadIndicator vadState={focusedCounter ? focusedCounter.vadState : 'silence'} />
             </div>
-            <AudioVisualizer rms={rms} vadState={vadState} verdict={lastVerdict} />
+            <AudioVisualizer
+              rms={focusedCounter ? focusedCounter.rms : 0}
+              vadState={focusedCounter ? focusedCounter.vadState : 'silence'}
+              verdict={focusedCounter ? focusedCounter.lastVerdict : null}
+            />
           </div>
 
           {/* Verdict distribution */}
           <VerdictDistribution stats={stats} />
 
           {/* System info */}
-          <SystemPanel pipelineStatus={pipelineStatus} feed={feed} activeSessionId={activeSessionId} />
+          <SystemPanel
+            pipelineStatus={pipelineStatus}
+            feed={combinedFeed}
+            activeSessionId={focusedCounter ? focusedCounter.activeSessionId : null}
+          />
 
           {/* Recent bad events */}
           {recentBad.length > 0 && (
@@ -728,7 +1029,10 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                     >
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: cfg.color }}>{item.verdict}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color }}>{item.verdict}</span>
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{item.counterName}</span>
+                        </div>
                         <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {item.transcript || '—'}
                         </div>
@@ -761,7 +1065,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
               )}
             </div>
             <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-              {feed.length} / {MAX_FEED}
+              {combinedFeed.length} segments
             </span>
           </div>
 
@@ -773,25 +1077,42 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
               padding: '0 20px 16px',
             }}
           >
-            {feed.length === 0 ? (
+            {combinedFeed.length === 0 ? (
               <div className="empty-state" style={{ marginTop: 40 }}>
                 <div className="empty-state-icon">🎙</div>
                 <div className="empty-state-title">No segments yet</div>
                 <div className="empty-state-sub">
                   {isRunning
-                    ? 'Listening… speak near your microphone to begin detection.'
-                    : 'Start the pipeline to begin real-time monitoring.'}
+                    ? 'Listening… speak near counter microphones to begin detection.'
+                    : 'Start pipelines to begin real-time monitoring.'}
                 </div>
               </div>
             ) : (
-              feed.map((item, i) => (
-                <FeedItem
-                  key={item.id}
-                  item={item}
-                  isNew={i === 0}
-                  onPlayClick={setPlayingRecording}
-                  categories={categories}
-                />
+              combinedFeed.map((item, i) => (
+                <div key={item.id} style={{ position: 'relative' }}>
+                  {/* Small tag showing which CS counter this segment belongs to */}
+                  <span style={{
+                    position: 'absolute',
+                    top: -5,
+                    right: 15,
+                    fontSize: 8,
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                    padding: '1px 6px',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 700,
+                    zIndex: 10,
+                  }}>
+                    {item.counterName}
+                  </span>
+                  <FeedItem
+                    item={item}
+                    isNew={i === 0}
+                    onPlayClick={setPlayingRecording}
+                    categories={categories}
+                  />
+                </div>
               ))
             )}
           </div>

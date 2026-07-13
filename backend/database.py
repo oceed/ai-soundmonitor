@@ -55,3 +55,25 @@ async def init_db() -> None:
     """Create all tables on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Self-healing migration for multi-counter support
+    import sqlite3
+    settings = get_settings()
+    try:
+        conn = sqlite3.connect(settings.database_path)
+        cursor = conn.cursor()
+        for table, col, col_type, default_val in [
+            ("recording_sessions", "counter_id", "VARCHAR(64)", "default"),
+            ("segments", "counter_id", "VARCHAR(64)", "default"),
+            ("alerts", "counter_id", "VARCHAR(64)", "default"),
+        ]:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = [info[1] for info in cursor.fetchall()]
+            if col not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type} DEFAULT '{default_val}'")
+                print(f"[Migration] Added column {col} to table {table}")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[Migration] Error applying SQLite migrations: {e}")
+

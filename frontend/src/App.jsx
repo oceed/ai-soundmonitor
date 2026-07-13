@@ -34,7 +34,7 @@ function AppLayout() {
     setLiveEvents(prev => [...prev, msg].slice(-MAX_EVENTS))
 
     if (msg.type === 'pipeline_status') {
-      setPipelineStatus(prev => ({ ...(prev || {}), running: msg.running, stats: msg.stats }))
+      setPipelineStatus(msg)
     }
     if (msg.type === 'audio_devices_changed') {
       setLiveDevices(msg.devices || [])

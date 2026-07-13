@@ -85,14 +85,22 @@ async def websocket_endpoint(
     await ws_manager.connect(websocket)
     try:
         # Send welcome + current status
-        from main import get_orchestrator  # avoid circular import
-        orch = get_orchestrator()
-        if orch:
-            await websocket.send_json({
-                "type": "pipeline_status",
+        from main import get_orchestrator, get_orchestrators  # avoid circular import
+        orch_map = get_orchestrators()
+        status_map = {}
+        for c_id, orch in orch_map.items():
+            status_map[c_id] = {
+                "id": c_id,
                 "running": orch.is_running,
-                **orch.stats,
-            })
+                "stats": orch.stats
+            }
+        orch = get_orchestrator()
+        await websocket.send_json({
+            "type": "pipeline_status",
+            "running": any(o.is_running for o in orch_map.values()),
+            "stats": orch.stats if orch else {},
+            "counters": status_map,
+        })
 
         while True:
             # Keep alive — handle ping or client messages
@@ -121,15 +129,17 @@ async def rms_broadcast_task():
         await asyncio.sleep(0.1)
         if ws_manager.client_count == 0:
             continue
-        from main import get_orchestrator
-        orch = get_orchestrator()
-        if orch and orch.is_running:
-            stats = orch.stats
-            await ws_manager.broadcast({
-                "type": "audio_level",
-                "rms": stats.get("rms", 0.0),
-                "vad_state": stats.get("vad_state", "silence"),
-            })
+        from main import get_orchestrators
+        orch_map = get_orchestrators()
+        for c_id, orch in orch_map.items():
+            if orch and orch.is_running:
+                stats = orch.stats
+                await ws_manager.broadcast({
+                    "type": "audio_level",
+                    "counter_id": c_id,
+                    "rms": stats.get("rms", 0.0),
+                    "vad_state": stats.get("vad_state", "silence"),
+                })
 
 
 async def device_watcher_task():
@@ -194,10 +204,11 @@ async def device_watcher_task():
 
         # Trigger orchestrator capture reload (runs in executor to prevent event loop blocking)
         try:
-            from main import get_orchestrator
-            orch = get_orchestrator()
-            if orch and orch.is_running:
-                logger.info("[DeviceWatcher] Device change detected, triggering audio capture reload...")
-                await loop.run_in_executor(None, orch.reload_config, True)
+            from main import get_orchestrators
+            orch_map = get_orchestrators()
+            for c_id, orch in orch_map.items():
+                if orch and orch.is_running:
+                    logger.info(f"[DeviceWatcher] Device change detected, triggering audio capture reload for counter {c_id}...")
+                    await loop.run_in_executor(None, orch.reload_config, True)
         except Exception as e:
             logger.warning("[DeviceWatcher] Failed to trigger orchestrator capture reload: %s", e)

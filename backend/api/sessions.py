@@ -64,6 +64,7 @@ async def get_session(
 @router.get("/api/segments")
 async def list_segments(
     session_id: Optional[int] = Query(None),
+    counter_id: Optional[str] = Query(None),
     verdict: Optional[str] = Query(None),
     skip: int = 0,
     limit: int = 100,
@@ -74,6 +75,8 @@ async def list_segments(
     q = select(Segment).options(selectinload(Segment.alert)).order_by(desc(Segment.timestamp))
     if session_id:
         q = q.where(Segment.session_id == session_id)
+    if counter_id:
+        q = q.where(Segment.counter_id == counter_id)
     if verdict:
         q = q.where(Segment.verdict == verdict)
     result = await db.execute(q.offset(skip).limit(limit))
@@ -83,6 +86,7 @@ async def list_segments(
             {
                 "id": s.id,
                 "session_id": s.session_id,
+                "counter_id": s.counter_id,
                 "timestamp": s.timestamp.replace(tzinfo=timezone.utc).isoformat() if s.timestamp else None,
                 "transcript": s.transcript,
                 "verdict": s.verdict,
@@ -106,6 +110,7 @@ async def list_segments(
 async def get_analytics(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    counter_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -135,6 +140,8 @@ async def get_analytics(
         q = q.where(Segment.timestamp >= dt_from)
     if dt_to:
         q = q.where(Segment.timestamp <= dt_to)
+    if counter_id:
+        q = q.where(Segment.counter_id == counter_id)
         
     result = await db.execute(q)
     segments = result.scalars().all()
@@ -196,6 +203,7 @@ def _session_to_dict(s: RecordingSession) -> dict:
         "start_time": s.start_time.replace(tzinfo=timezone.utc).isoformat() if s.start_time else None,
         "end_time": s.end_time.replace(tzinfo=timezone.utc).isoformat() if s.end_time else None,
         "device_name": s.device_name,
+        "counter_id": getattr(s, "counter_id", "default"),
         "stt_mode": s.stt_mode,
         "llm_mode": s.llm_mode,
         "total_segments": s.total_segments,

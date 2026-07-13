@@ -5,7 +5,7 @@ import {
 } from '../api/config'
 import { useToast } from '../components/NotificationToast'
 
-const TABS = ['General', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications', 'System Prompt', 'Security']
+const TABS = ['General', 'Counters', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications', 'System Prompt', 'Security']
 
 export function Settings({ liveDevices }) {
   const [activeTab, setActiveTab] = useState('General')
@@ -118,6 +118,14 @@ export function Settings({ liveDevices }) {
         {/* Tab content */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeTab === 'General' && <GeneralTab config={config} onSave={save} saving={saving} />}
+          {activeTab === 'Counters' && (
+            <CountersTab
+              config={config}
+              devices={devices}
+              onSave={save}
+              saving={saving}
+            />
+          )}
           {activeTab === 'Audio & VAD' && (
             <AudioTab
               config={config}
@@ -1052,6 +1060,167 @@ function SecurityTab() {
           Change Password
         </button>
       </form>
+    </div>
+  )
+}
+
+function CountersTab({ config, devices, onSave, saving }) {
+  const [counters, setCounters] = useState(() => {
+    return config.counters || [
+      { id: 'counter_1', name: 'Meja CS 1', audio_device_index: -1, enabled: true }
+    ]
+  })
+
+  const handleChange = (index, field, value) => {
+    setCounters(prev => {
+      const copy = [...prev]
+      copy[index] = { ...copy[index], [field]: value }
+      return copy
+    })
+  }
+
+  const handleAdd = () => {
+    setCounters(prev => [
+      ...prev,
+      {
+        id: `counter_${prev.length + 1}`,
+        name: `Meja CS ${prev.length + 1}`,
+        audio_device_index: -1,
+        enabled: true
+      }
+    ])
+  }
+
+  const handleDelete = (index) => {
+    setCounters(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleSave = () => {
+    onSave({ counters })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800 }}>
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <div>
+            <h3>Manage CS Counters</h3>
+            <p className="form-help" style={{ marginTop: 2 }}>Define multiple customer service desks and select which microphone is attached to each counter.</p>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={handleAdd}>+ Add Counter</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {counters.map((c, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '12px 16px',
+              }}
+            >
+              {/* Enabled Switch */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 700 }}>Enable</span>
+                <input
+                  type="checkbox"
+                  checked={c.enabled ?? true}
+                  onChange={e => handleChange(idx, 'enabled', e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Counter ID (slug) */}
+              <div style={{ flex: 1 }}>
+                <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Counter ID (Slug)</label>
+                <input
+                  type="text"
+                  className="form-input mono"
+                  value={c.id}
+                  onChange={e => handleChange(idx, 'id', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="counter_1"
+                  style={{ fontSize: 11, padding: '6px 10px' }}
+                />
+              </div>
+
+              {/* Counter Name (display) */}
+              <div style={{ flex: 1.5 }}>
+                <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Counter Display Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={c.name}
+                  onChange={e => handleChange(idx, 'name', e.target.value)}
+                  placeholder="Meja CS 1"
+                  style={{ fontSize: 11, padding: '6px 10px' }}
+                />
+              </div>
+
+              {/* Audio Input Device Mapping */}
+              <div style={{ flex: 2 }}>
+                <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Microphone Input Device</label>
+                <select
+                  className="form-select"
+                  value={c.audio_device_index}
+                  onChange={e => handleChange(idx, 'audio_device_index', parseInt(e.target.value))}
+                  style={{ fontSize: 11, padding: '5px 8px' }}
+                >
+                  <option value={-1}>System Default Mic (-1)</option>
+                  {devices.map(d => (
+                    <option key={d.index} value={d.index}>
+                      [{d.index}] {d.name} ({d.max_input_channels} ch)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Delete Button */}
+              <button
+                className="btn btn-danger"
+                onClick={() => handleDelete(idx)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  marginTop: 18,
+                  height: 'fit-content'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {counters.length === 0 && (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              No counters defined. At least one counter is recommended for monitoring.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setCounters(config.counters || [{ id: 'counter_1', name: 'Meja CS 1', audio_device_index: -1, enabled: true }])
+          }}
+        >
+          Reset changes
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? <span className="spinner" style={{ width: 12, height: 12 }} /> : null}
+          Save Counters Setup
+        </button>
+      </div>
     </div>
   )
 }

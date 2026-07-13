@@ -14,6 +14,7 @@ export function Alerts({ liveEvents }) {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ALL')
+  const [counterFilter, setCounterFilter] = useState('ALL')
   const [timeFilter, setTimeFilter] = useState('ALL')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -21,11 +22,15 @@ export function Alerts({ liveEvents }) {
   const [page, setPage] = useState(1)
   const { addToast } = useToast()
   const [categories, setCategories] = useState([])
+  const [counters, setCounters] = useState([])
 
   useEffect(() => {
     getConfig().then(cfg => {
       if (cfg?.fraud_categories) {
         setCategories(cfg.fraud_categories)
+      }
+      if (cfg?.counters) {
+        setCounters(cfg.counters)
       }
     }).catch(err => console.error(err))
   }, [])
@@ -63,12 +68,20 @@ export function Alerts({ liveEvents }) {
     return { dateFrom, dateTo }
   }
 
-  const load = useCallback(async (targetPage = 1, currentVerdictFilter = filter, currentTimeFilter = timeFilter, customStart = customStartDate, customEnd = customEndDate) => {
+  const load = useCallback(async (
+    targetPage = 1,
+    currentVerdictFilter = filter,
+    currentTimeFilter = timeFilter,
+    customStart = customStartDate,
+    customEnd = customEndDate,
+    currentCounterFilter = counterFilter
+  ) => {
     setLoading(true)
     try {
       const skip = (targetPage - 1) * LIMIT
       const params = { skip, limit: LIMIT }
       if (currentVerdictFilter !== 'ALL') params.verdict = currentVerdictFilter
+      if (currentCounterFilter !== 'ALL') params.counter_id = currentCounterFilter
 
       const { dateFrom, dateTo } = getTimeRange(currentTimeFilter, customStart, customEnd)
       if (dateFrom) params.date_from = dateFrom
@@ -83,13 +96,13 @@ export function Alerts({ liveEvents }) {
     } finally {
       setLoading(false)
     }
-  }, [filter, timeFilter, customStartDate, customEndDate, LIMIT, addToast])
+  }, [filter, timeFilter, customStartDate, customEndDate, counterFilter, LIMIT, addToast])
 
   useEffect(() => {
     if (timeFilter !== 'CUSTOM') {
       load(1)
     }
-  }, [filter, timeFilter])
+  }, [filter, timeFilter, counterFilter])
 
   // Push new alerts from WebSocket
   useEffect(() => {
@@ -144,6 +157,29 @@ export function Alerts({ liveEvents }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Counter Filter */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className="form-label" style={{ fontSize: 10 }}>Counter Filter</span>
+            <select
+              className="form-select btn-sm"
+              value={counterFilter}
+              onChange={e => setCounterFilter(e.target.value)}
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                borderRadius: 'var(--radius)',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                minWidth: 150
+              }}
+            >
+              <option value="ALL">All Counters</option>
+              {counters.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
 
           {/* Time Filter */}
@@ -225,6 +261,7 @@ export function Alerts({ liveEvents }) {
                 <AlertRow
                   key={alert.id}
                   alert={alert}
+                  counters={counters}
                   expanded={expandedId === alert.id}
                   onToggle={() => setExpandedId(prev => prev === alert.id ? null : alert.id)}
                   onDelete={handleDelete}
@@ -268,10 +305,13 @@ export function Alerts({ liveEvents }) {
   )
 }
 
-function AlertRow({ alert, expanded, onToggle, onDelete, categories = [] }) {
+function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categories = [] }) {
   const cfg = VERDICT_CFG[alert.verdict] || VERDICT_CFG.SUSPICIOUS
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
+
+  const counter = counters.find(c => c.id === alert.counter_id)
+  const counterName = counter?.name || alert.counter_id || 'Default'
 
   const togglePlay = (e) => {
     e.stopPropagation()
@@ -332,8 +372,9 @@ function AlertRow({ alert, expanded, onToggle, onDelete, categories = [] }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', align: 'center', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: 10 }}>{counterName}</div>
             <div>{alert.timestamp ? format(new Date(alert.timestamp), 'MMM d, HH:mm:ss') : '—'}</div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>#{alert.id}</div>
           </div>

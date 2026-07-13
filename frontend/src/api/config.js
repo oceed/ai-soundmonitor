@@ -23,11 +23,11 @@ export const getAudioDevices = () =>
 export const getPipelineStatus = () =>
   client.get('/api/pipeline/status').then(r => r.data)
 
-export const startPipeline = () =>
-  client.post('/api/pipeline/start').then(r => r.data)
+export const startPipeline = (counterId) =>
+  client.post('/api/pipeline/start', null, { params: counterId ? { counter_id: counterId } : {} }).then(r => r.data)
 
-export const stopPipeline = () =>
-  client.post('/api/pipeline/stop').then(r => r.data)
+export const stopPipeline = (counterId) =>
+  client.post('/api/pipeline/stop', null, { params: counterId ? { counter_id: counterId } : {} }).then(r => r.data)
 
 export const getSessions = (params = {}) =>
   client.get('/api/sessions', { params }).then(r => r.data)

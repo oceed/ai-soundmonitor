@@ -59,6 +59,7 @@ class DBWriter:
         audio_device_index: int,
         stt_mode: str,
         llm_mode: str,
+        counter_id: str = "default",
     ) -> int:
         with self._session() as s:
             session = RecordingSession(
@@ -67,6 +68,7 @@ class DBWriter:
                 audio_device_index=audio_device_index,
                 stt_mode=stt_mode,
                 llm_mode=llm_mode,
+                counter_id=counter_id,
             )
             s.add(session)
             s.commit()
@@ -99,6 +101,7 @@ class DBWriter:
         llm_ms: int,
         stt_mode: str,
         llm_mode: str,
+        counter_id: str = "default",
     ) -> int:
         with self._session() as s:
             seg = Segment(
@@ -116,6 +119,7 @@ class DBWriter:
                 llm_ms=llm_ms,
                 stt_mode_used=stt_mode,
                 llm_mode_used=llm_mode,
+                counter_id=counter_id,
             )
             s.add(seg)
             s.commit()
@@ -177,6 +181,7 @@ class DBWriter:
         transcript: str,
         pre_buffer_s: float,
         post_buffer_s: float,
+        counter_id: str = "default",
     ) -> int:
         with self._session() as s:
             alert = Alert(
@@ -192,6 +197,7 @@ class DBWriter:
                 transcript=transcript,
                 pre_buffer_s=pre_buffer_s,
                 post_buffer_s=post_buffer_s,
+                counter_id=counter_id,
             )
             s.add(alert)
             s.commit()

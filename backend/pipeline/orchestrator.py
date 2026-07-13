@@ -35,11 +35,23 @@ class PipelineOrchestrator:
     All state is accessible via properties for the API layer.
     """
 
-    def __init__(self, settings, runtime_config, broadcast_fn: Callable, db_writer):
+    def __init__(
+        self,
+        settings,
+        runtime_config,
+        broadcast_fn: Callable,
+        db_writer,
+        counter_id: str = "default",
+        counter_name: str = "Default Counter",
+        override_device_index: Optional[int] = None,
+    ):
         self._settings = settings
         self._rc = runtime_config          # RuntimeConfig instance
         self._broadcast = broadcast_fn     # async broadcast to WebSocket clients
         self._db = db_writer               # DBWriter (sync wrapper)
+        self._counter_id = counter_id
+        self._counter_name = counter_name
+        self._override_device_index = override_device_index
 
         self._segment_queue: queue.Queue = queue.Queue(maxsize=20)
         self._running = False
@@ -95,10 +107,11 @@ class PipelineOrchestrator:
 
         # Create DB session
         self._session_id = self._db.create_session(
-            device_name=self._rc.get("device_name", "unknown"),
-            audio_device_index=self._rc.get("audio_device_index", -1),
+            device_name=self._counter_name,
+            audio_device_index=self._override_device_index if self._override_device_index is not None else self._rc.get("audio_device_index", -1),
             stt_mode=self._rc.get("stt_mode", "auto"),
             llm_mode=self._rc.get("llm_mode", "auto"),
+            counter_id=self._counter_id,
         )
         if self._recorder:
             self._recorder.set_session_id(self._session_id)
@@ -167,7 +180,7 @@ class PipelineOrchestrator:
         restart_capture = False
         if self._capture:
             current_device = self._capture._device_index
-            new_device = self._rc.get("audio_device_index", self._settings.audio_device_index)
+            new_device = self._override_device_index if self._override_device_index is not None else self._rc.get("audio_device_index", self._settings.audio_device_index)
             current_sample_rate = self._capture._sample_rate
             new_sample_rate = self._rc.get("sample_rate", self._settings.sample_rate)
             current_channels = self._capture._channels
@@ -291,7 +304,7 @@ class PipelineOrchestrator:
             ring_push_callback=self._on_ring_push,
             rms_callback=self._on_rms,
             vad_state_callback=self._on_vad_state,
-            device_index=rc.get("audio_device_index", s.audio_device_index),
+            device_index=self._override_device_index if self._override_device_index is not None else rc.get("audio_device_index", s.audio_device_index),
             sample_rate=rc.get("sample_rate", s.sample_rate),
             channels=rc.get("channels", s.channels),
             chunk_size=rc.get("chunk_size", s.chunk_size),
@@ -475,6 +488,7 @@ class PipelineOrchestrator:
                 llm_ms=fraud_result.elapsed_ms,
                 stt_mode=stt.mode_used,
                 llm_mode=fraud_result.mode_used,
+                counter_id=self._counter_id,
             )
 
             # Broadcast result
@@ -538,6 +552,7 @@ class PipelineOrchestrator:
             transcript=stt.text,
             pre_buffer_s=self._rc.get("pre_buffer_seconds", 10.0),
             post_buffer_s=self._rc.get("post_buffer_seconds", 15.0),
+            counter_id=self._counter_id,
         )
 
         # Broadcast UI alert
@@ -653,7 +668,7 @@ class PipelineOrchestrator:
     def _emit(self, event_type: str, data: Dict[str, Any]) -> None:
         if self._loop is None or not self._loop.is_running():
             return
-        payload = {"type": event_type, **data}
+        payload = {"type": event_type, "counter_id": self._counter_id, **data}
         asyncio.run_coroutine_threadsafe(
             self._broadcast(payload),
             self._loop,
