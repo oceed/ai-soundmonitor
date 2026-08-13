@@ -760,9 +760,12 @@ class PipelineOrchestrator:
                     "counter_id": self._counter_id,
                     "session_id": self._session_id,
                 }
-                self._mqtt.publish(payload)
-                self._db.mark_mqtt_sent(alert_id)
-                logger.info(f"[Alert {alert_id}] Published to MQTT")
+                published = self._mqtt.publish(payload)
+                if published:
+                    self._db.mark_mqtt_sent(alert_id)
+                    logger.info(f"[Alert {alert_id}] Published to MQTT")
+                else:
+                    logger.warning(f"[Alert {alert_id}] MQTT publish skipped (broker offline/not connected)")
             except Exception as e:
                 logger.error(f"[Alert {alert_id}] MQTT publish failed: {e}")
 

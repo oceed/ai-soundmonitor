@@ -104,8 +104,12 @@ class MQTTService:
             logger.error(f"[MQTT] Publish normal error: {e}")
             return False
 
-    def _on_connect(self, client, userdata, flags, reason_code, properties) -> None:
-        self._connected = reason_code == 0
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
+        try:
+            rc_num = int(reason_code) if hasattr(reason_code, "__int__") else (reason_code.value if hasattr(reason_code, "value") else reason_code)
+        except Exception:
+            rc_num = reason_code
+        self._connected = (rc_num == 0 or str(reason_code) == "Success" or getattr(reason_code, "is_failure", True) is False)
         if self._connected:
             logger.info("[MQTT] Connected to broker")
         else:
