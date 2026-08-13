@@ -492,7 +492,7 @@ function STTTab({ config, onSave, saving }) {
 function LLMTab({ config, onSave, saving }) {
   const [mode, setMode] = useState(config.llm_mode ?? 'auto')
   const [groqApiKey, setGroqApiKey] = useState('')
-  const [groqLlmModel, setGroqLlmModel] = useState(config.groq_llm_model ?? 'meta-llama/llama-4-scout-17b-16e-instruct')
+  const [groqLlmModel, setGroqLlmModel] = useState(config.groq_llm_model ?? 'llama-3.3-70b-versatile')
   const [customLlmModel, setCustomLlmModel] = useState('')
   const [localUrl, setLocalUrl] = useState(config.local_llm_url ?? 'http://localhost:11434')
   const [localModel, setLocalModel] = useState(config.local_llm_model ?? 'qwen2.5:1.5b')
@@ -542,8 +542,7 @@ function LLMTab({ config, onSave, saving }) {
             setGroqLlmModel(e.target.value)
             if (e.target.value !== 'custom') setCustomLlmModel('')
           }}>
-            <option value="meta-llama/llama-4-scout-17b-16e-instruct">meta-llama/llama-4-scout-17b-16e-instruct (Recommended)</option>
-            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (High Reasoning & Multilingual)</option>
+            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended, High Reasoning)</option>
             <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast & Compact)</option>
             <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 (MoE Architecture)</option>
             <option value="custom">Custom Model String...</option>

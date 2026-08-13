@@ -60,8 +60,8 @@ async def patch_config(
     _: User = Depends(get_current_user),
 ):
     """Update runtime config keys. Persists to DB and updates in-memory cache."""
-    # Filter out masked placeholders
-    updates = {k: v for k, v in updates.items() if v != "***"}
+    raw_updates = dict(body.updates)
+    updates = {k: v for k, v in raw_updates.items() if v != "***"}
     if not updates:
         return {"message": "No changes to save"}
 

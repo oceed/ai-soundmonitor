@@ -13,7 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 import urllib.request
 import logging
 
@@ -123,6 +127,9 @@ class CameraSnapshotService:
 
     def _fetch_rtsp_snapshot(self, rtsp_url: str, timeout: int) -> Optional[bytes]:
         """Capture a single frame from RTSP stream using OpenCV."""
+        if cv2 is None:
+            logger.warning("[CameraService] OpenCV (cv2) is not available for RTSP capture")
+            return None
         cap = None
         try:
             cap = cv2.VideoCapture(rtsp_url)

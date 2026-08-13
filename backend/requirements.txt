@@ -44,6 +44,9 @@ paho-mqtt==2.0.0
 # Scheduler (retention cleanup)
 apscheduler==3.10.4
 
+# Image / Camera processing
+opencv-python-headless==4.9.0.80
+
 # Utilities
 orjson==3.10.3
 python-dateutil==2.9.0

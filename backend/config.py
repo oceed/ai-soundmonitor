@@ -271,7 +271,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     # Groq & LLM / STT Models
     "groq_api_key": "",
     "groq_stt_model": "whisper-large-v3-turbo",
-    "groq_llm_model": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "groq_llm_model": "llama-3.3-70b-versatile",
     # Audio Cloud Upload
     "audio_upload_enabled": False,
     "audio_upload_url": "https://api.protectqube.ai/api/v1/voice/ai-alerts/file",
