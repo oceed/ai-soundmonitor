@@ -271,13 +271,19 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     # Groq & LLM / STT Models
     "groq_api_key": "",
     "groq_stt_model": "whisper-large-v3-turbo",
-    "groq_llm_model": "llama-3.3-70b-versatile",
+    "groq_llm_model": "groq/compound",
     # Audio Cloud Upload
     "audio_upload_enabled": False,
     "audio_upload_url": "https://api.protectqube.ai/api/v1/voice/ai-alerts/file",
     "audio_upload_api_key": "",
     "audio_upload_category": "detections",
     "audio_upload_id_path": "id",
+    # Snapshot Cloud Upload
+    "snapshot_upload_enabled": False,
+    "snapshot_upload_url": "https://api.protectqube.ai/api/v1/voice/ai-alerts/file",
+    "snapshot_upload_api_key": "",
+    "snapshot_upload_category": "detections",
+    "snapshot_upload_id_path": "id",
     "audio_device_index": -1,
     "local_llm_url": "http://localhost:11434",
     "local_llm_model": "qwen2.5:1.5b",

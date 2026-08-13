@@ -64,6 +64,7 @@ class PipelineOrchestrator:
         self._llm = None
         self._mqtt = None
         self._audio_uploader = None
+        self._snapshot_uploader = None
         self._camera_service = None
 
         # Worker threads
@@ -105,6 +106,7 @@ class PipelineOrchestrator:
         self._init_recorder()
         self._init_mqtt()
         self._init_audio_uploader()
+        self._init_snapshot_uploader()
         self._init_camera_service()
 
         # Create DB session
@@ -337,8 +339,19 @@ class PipelineOrchestrator:
         try:
             from services.audio_upload import AudioUploadService
             self._audio_uploader = AudioUploadService(self._rc)
+            logger.info("[Orchestrator] AudioUploadService initialized")
         except Exception as e:
             logger.error(f"[Orchestrator] Audio uploader init failed: {e}")
+
+    def _init_snapshot_uploader(self) -> None:
+        if not self._rc.get("snapshot_upload_enabled", False):
+            return
+        try:
+            from services.snapshot_upload import SnapshotUploadService
+            self._snapshot_uploader = SnapshotUploadService(self._rc)
+            logger.info("[Orchestrator] SnapshotUploadService initialized")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Snapshot uploader init failed: {e}")
 
     def _init_camera_service(self) -> None:
         try:
@@ -708,13 +721,31 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(f"[Alert {alert_id}] Audio upload failed: {e}")
 
+        # 3.5. Upload snapshot & get unique snapshot ID
+        snapshot_unique_id = None
+        alert_data = self._db.get_alert(alert_id)
+        snap_path_str = alert_data.get("snapshot_path", "") if alert_data else ""
+        if snap_path_str and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+            try:
+                storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+                target_file = storage_base / snap_path_str.lstrip('/')
+                if not target_file.exists():
+                    target_file = Path(snap_path_str)
+                if target_file.exists():
+                    snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
+                    logger.info(f"[Alert {alert_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
+            except Exception as e:
+                logger.error(f"[Alert {alert_id}] Snapshot upload failed: {e}")
+
         # 4. Publish MQTT (only for actual alerts)
         if is_actual_alert and self._rc.get("mqtt_enabled", False) and self._mqtt:
             try:
-                alert_data = self._db.get_alert(alert_id)
                 payload = {
                     "alert_id": alert_id,
+                    "audio_id": audio_unique_id or "",
                     "audio_unique_id": audio_unique_id or "",
+                    "snapshot_id": snapshot_unique_id or "",
+                    "snapshot_unique_id": snapshot_unique_id or "",
                     "verdict": fraud_result.verdict,
                     "classification": fraud_result.classification,
                     "confidence": fraud_result.confidence,
@@ -723,9 +754,10 @@ class PipelineOrchestrator:
                     "flags": fraud_result.active_flags,
                     "evidence": fraud_result.evidence,
                     "transcript": alert_data.get("transcript", "") if alert_data else "",
-                    "snapshot_path": alert_data.get("snapshot_path", "") if alert_data else "",
+                    "snapshot_path": snap_path_str,
                     "timestamp": timestamp.isoformat(),
                     "device_name": self._rc.get("device_name", ""),
+                    "counter_id": self._counter_id,
                     "session_id": self._session_id,
                 }
                 self._mqtt.publish(payload)

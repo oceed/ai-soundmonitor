@@ -47,7 +47,7 @@ async def get_config(
     """Return all runtime config (merged with defaults)."""
     cfg = runtime_config.get_all()
     # Mask sensitive values
-    for key in ("mqtt_password", "audio_upload_api_key", "groq_api_key"):
+    for key in ("mqtt_password", "audio_upload_api_key", "snapshot_upload_api_key", "groq_api_key"):
         if cfg.get(key):
             cfg[key] = "***"
     return cfg

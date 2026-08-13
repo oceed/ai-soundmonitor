@@ -5,7 +5,7 @@ import {
 } from '../api/config'
 import { useToast } from '../components/NotificationToast'
 
-const TABS = ['General', 'Counters', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications', 'Camera & Cloud', 'System Prompt', 'Security']
+const TABS = ['General', 'Counters', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications & Cloud', 'System Prompt', 'Security']
 
 export function Settings({ liveDevices }) {
   const [activeTab, setActiveTab] = useState('General')
@@ -140,8 +140,7 @@ export function Settings({ liveDevices }) {
           {activeTab === 'STT' && <STTTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'LLM' && <LLMTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'Recording' && <RecordingTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'Notifications' && <NotificationsTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'Camera & Cloud' && <CameraCloudTab config={config} onSave={save} saving={saving} />}
+          {activeTab === 'Notifications & Cloud' && <NotificationsTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'System Prompt' && (
             <PromptTab
               prompt={prompt}
@@ -403,20 +402,34 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
   )
 }
 
+const KNOWN_STT_MODELS = ['whisper-large-v3-turbo', 'whisper-large-v3', 'distil-whisper-large-v3-en']
+
 function STTTab({ config, onSave, saving }) {
   const [mode, setMode] = useState(config.stt_mode ?? 'auto')
   const [localModel, setLocalModel] = useState(config.local_whisper_model ?? 'base')
   const [language, setLanguage] = useState(config.stt_language ?? 'id')
   const [groqApiKey, setGroqApiKey] = useState('')
-  const [groqSttModel, setGroqSttModel] = useState(config.groq_stt_model ?? 'whisper-large-v3-turbo')
+  const [groqSttModel, setGroqSttModel] = useState('whisper-large-v3-turbo')
   const [customSttModel, setCustomSttModel] = useState('')
 
+  useEffect(() => {
+    const cur = config.groq_stt_model || 'whisper-large-v3-turbo'
+    if (KNOWN_STT_MODELS.includes(cur)) {
+      setGroqSttModel(cur)
+      setCustomSttModel('')
+    } else {
+      setGroqSttModel('custom')
+      setCustomSttModel(cur)
+    }
+  }, [config.groq_stt_model])
+
   const handleSave = () => {
+    const targetModel = groqSttModel === 'custom' ? customSttModel.trim() : groqSttModel
     const updates = {
       stt_mode: mode,
       local_whisper_model: localModel,
       stt_language: language,
-      groq_stt_model: customSttModel.trim() ? customSttModel.trim() : groqSttModel,
+      groq_stt_model: targetModel || 'whisper-large-v3-turbo',
     }
     if (groqApiKey) updates.groq_api_key = groqApiKey
     onSave(updates)
@@ -489,10 +502,12 @@ function STTTab({ config, onSave, saving }) {
   )
 }
 
+const KNOWN_LLM_MODELS = ['groq/compound', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+
 function LLMTab({ config, onSave, saving }) {
   const [mode, setMode] = useState(config.llm_mode ?? 'auto')
   const [groqApiKey, setGroqApiKey] = useState('')
-  const [groqLlmModel, setGroqLlmModel] = useState(config.groq_llm_model ?? 'llama-3.3-70b-versatile')
+  const [groqLlmModel, setGroqLlmModel] = useState('groq/compound')
   const [customLlmModel, setCustomLlmModel] = useState('')
   const [localUrl, setLocalUrl] = useState(config.local_llm_url ?? 'http://localhost:11434')
   const [localModel, setLocalModel] = useState(config.local_llm_model ?? 'qwen2.5:1.5b')
@@ -501,10 +516,22 @@ function LLMTab({ config, onSave, saving }) {
   const [contextMaxAge, setContextMaxAge] = useState(config.context_max_age_seconds ?? 300)
   const [contextGap, setContextGap] = useState(config.context_gap_threshold_seconds ?? 90)
 
+  useEffect(() => {
+    const cur = config.groq_llm_model || 'groq/compound'
+    if (KNOWN_LLM_MODELS.includes(cur)) {
+      setGroqLlmModel(cur)
+      setCustomLlmModel('')
+    } else {
+      setGroqLlmModel('custom')
+      setCustomLlmModel(cur)
+    }
+  }, [config.groq_llm_model])
+
   const handleSave = () => {
+    const targetModel = groqLlmModel === 'custom' ? customLlmModel.trim() : groqLlmModel
     const updates = {
       llm_mode: mode,
-      groq_llm_model: customLlmModel.trim() ? customLlmModel.trim() : groqLlmModel,
+      groq_llm_model: targetModel || 'groq/compound',
       local_llm_url: localUrl,
       local_llm_model: localModel,
       local_llm_endpoint_type: endpointType,
@@ -539,10 +566,12 @@ function LLMTab({ config, onSave, saving }) {
       <SettingRow label="Groq LLM Model (API)" hint="Select LLM model for Groq Cloud API analysis">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <select className="form-select" value={groqLlmModel} onChange={e => {
-            setGroqLlmModel(e.target.value)
-            if (e.target.value !== 'custom') setCustomLlmModel('')
+            const val = e.target.value
+            setGroqLlmModel(val)
+            if (val !== 'custom') setCustomLlmModel('')
           }}>
-            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended, High Reasoning)</option>
+            <option value="groq/compound">groq/compound (Recommended Default)</option>
+            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (High Reasoning & Multilingual)</option>
             <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast & Compact)</option>
             <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 (MoE Architecture)</option>
             <option value="custom">Custom Model String...</option>
@@ -553,7 +582,7 @@ function LLMTab({ config, onSave, saving }) {
               className="form-input mono"
               value={customLlmModel}
               onChange={e => setCustomLlmModel(e.target.value)}
-              placeholder="Enter custom Groq LLM model string (e.g. gemma2-9b-it)"
+              placeholder="Enter custom Groq LLM model string (e.g. groq/compound)"
               style={{ fontSize: 11 }}
             />
           )}
@@ -681,44 +710,89 @@ function RecordingTab({ config, onSave, saving }) {
 }
 
 function NotificationsTab({ config, onSave, saving }) {
+  // MQTT
   const [mqttEnabled, setMqttEnabled] = useState(config.mqtt_enabled ?? false)
   const [mqttHost, setMqttHost] = useState(config.mqtt_broker_host ?? '')
   const [mqttPort, setMqttPort] = useState(config.mqtt_broker_port ?? 1883)
   const [mqttTopic, setMqttTopic] = useState(config.mqtt_topic ?? 'voiceguard/fraud/alerts')
+  const [mqttNormalTopic, setMqttNormalTopic] = useState(config.mqtt_normal_topic ?? 'voiceguard/normal/events')
   const [mqttUser, setMqttUser] = useState(config.mqtt_username ?? '')
   const [mqttPass, setMqttPass] = useState('')
   const [mqttQos, setMqttQos] = useState(config.mqtt_qos ?? 1)
+  const [sendNormalMqtt, setSendNormalMqtt] = useState(config.send_normal_conversations_to_mqtt ?? false)
 
-  const [uploadEnabled, setUploadEnabled] = useState(config.audio_upload_enabled ?? false)
-  const [uploadUrl, setUploadUrl] = useState(config.audio_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
-  const [uploadKey, setUploadKey] = useState('')
-  const [uploadCategory, setUploadCategory] = useState(config.audio_upload_category ?? 'detections')
-  const [uploadIdPath, setUploadIdPath] = useState(config.audio_upload_id_path ?? 'id')
+  // Audio Upload API
+  const [audioUploadEnabled, setAudioUploadEnabled] = useState(config.audio_upload_enabled ?? false)
+  const [audioUploadUrl, setAudioUploadUrl] = useState(config.audio_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
+  const [audioUploadKey, setAudioUploadKey] = useState('')
+  const [audioUploadCategory, setAudioUploadCategory] = useState(config.audio_upload_category ?? 'detections')
+  const [audioUploadIdPath, setAudioUploadIdPath] = useState(config.audio_upload_id_path ?? 'id')
+
+  // Snapshot Upload API
+  const [snapshotUploadEnabled, setSnapshotUploadEnabled] = useState(config.snapshot_upload_enabled ?? false)
+  const [snapshotUploadUrl, setSnapshotUploadUrl] = useState(config.snapshot_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
+  const [snapshotUploadKey, setSnapshotUploadKey] = useState('')
+  const [snapshotUploadCategory, setSnapshotUploadCategory] = useState(config.snapshot_upload_category ?? 'detections')
+  const [snapshotUploadIdPath, setSnapshotUploadIdPath] = useState(config.snapshot_upload_id_path ?? 'id')
+
+  // Camera Snapshot Settings
+  const [cameraEnabled, setCameraEnabled] = useState(config.camera_snapshot_enabled ?? false)
+  const [cameraSource, setCameraSource] = useState(config.camera_snapshot_source ?? 'protectqube')
+  const [cameraPqUrl, setCameraPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8000')
+  const [cameraTimeout, setCameraTimeout] = useState(config.camera_snapshot_timeout ?? 5)
+  const [cameraVerdicts, setCameraVerdicts] = useState(config.camera_snapshot_on_verdicts ?? ['FRAUD', 'SUSPICIOUS'])
+  const [snapOnNormal, setSnapOnNormal] = useState(config.snapshot_on_normal_conversation ?? false)
+
+  const toggleVerdict = (verdict) => {
+    setCameraVerdicts(prev =>
+      prev.includes(verdict) ? prev.filter(v => v !== verdict) : [...prev, verdict]
+    )
+  }
 
   const handleSave = () => {
     const updates = {
+      // MQTT
       mqtt_enabled: mqttEnabled,
       mqtt_broker_host: mqttHost,
       mqtt_broker_port: mqttPort,
       mqtt_topic: mqttTopic,
+      mqtt_normal_topic: mqttNormalTopic,
       mqtt_username: mqttUser,
       mqtt_qos: mqttQos,
-      audio_upload_enabled: uploadEnabled,
-      audio_upload_url: uploadUrl,
-      audio_upload_category: uploadCategory,
-      audio_upload_id_path: uploadIdPath,
+      send_normal_conversations_to_mqtt: sendNormalMqtt,
+      // Audio Upload API
+      audio_upload_enabled: audioUploadEnabled,
+      audio_upload_url: audioUploadUrl,
+      audio_upload_category: audioUploadCategory,
+      audio_upload_id_path: audioUploadIdPath,
+      // Snapshot Upload API
+      snapshot_upload_enabled: snapshotUploadEnabled,
+      snapshot_upload_url: snapshotUploadUrl,
+      snapshot_upload_category: snapshotUploadCategory,
+      snapshot_upload_id_path: snapshotUploadIdPath,
+      // Camera Snapshot
+      camera_snapshot_enabled: cameraEnabled,
+      camera_snapshot_source: cameraSource,
+      camera_snapshot_protectqube_url: cameraPqUrl,
+      camera_snapshot_timeout: cameraTimeout,
+      camera_snapshot_on_verdicts: cameraVerdicts,
+      snapshot_on_normal_conversation: snapOnNormal,
     }
     if (mqttPass) updates.mqtt_password = mqttPass
-    if (uploadKey) updates.audio_upload_api_key = uploadKey
+    if (audioUploadKey) updates.audio_upload_api_key = audioUploadKey
+    if (snapshotUploadKey) updates.snapshot_upload_api_key = snapshotUploadKey
     onSave(updates)
   }
 
   return (
-    <>
-      {/* MQTT */}
-      <div className="card" style={{ marginBottom: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 840 }}>
+      {/* MQTT Integration */}
+      <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3>MQTT Integration</h3>
+          <div>
+            <h3>MQTT Data Broker Integration</h3>
+            <div className="form-hint">Publishes JSON alerts (containing transcript, audio_id, snapshot_id, verdict) to MQTT broker.</div>
+          </div>
           <Toggle checked={mqttEnabled} onChange={setMqttEnabled} />
         </div>
 
@@ -730,9 +804,17 @@ function NotificationsTab({ config, onSave, saving }) {
             <SettingRow label="Broker Port">
               <input type="number" className="form-input" value={mqttPort} onChange={e => setMqttPort(Number(e.target.value))} />
             </SettingRow>
-            <SettingRow label="Topic" hint="MQTT topic to publish alerts to">
+            <SettingRow label="Fraud/Alert Topic" hint="MQTT topic to publish fraud/suspicious alert events">
               <input className="form-input" value={mqttTopic} onChange={e => setMqttTopic(e.target.value)} />
             </SettingRow>
+            <SettingRow label="Publish Normal Conversations" hint="Publish non-fraud (SOP compliance / greeting) events to MQTT">
+              <Toggle checked={sendNormalMqtt} onChange={setSendNormalMqtt} />
+            </SettingRow>
+            {sendNormalMqtt && (
+              <SettingRow label="Normal Event Topic" hint="MQTT topic name for normal conversation events">
+                <input className="form-input" value={mqttNormalTopic} onChange={e => setMqttNormalTopic(e.target.value)} placeholder="voiceguard/normal/events" />
+              </SettingRow>
+            )}
             <SettingRow label="Username">
               <input className="form-input" value={mqttUser} onChange={e => setMqttUser(e.target.value)} />
             </SettingRow>
@@ -747,44 +829,123 @@ function NotificationsTab({ config, onSave, saving }) {
               </select>
             </SettingRow>
             <div style={{ padding: '12px', background: 'var(--bg-elevated)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-              <strong>MQTT Payload schema:</strong> alert_id, audio_unique_id, verdict, classification, confidence, risk_level, reason, flags, evidence, transcript, timestamp, device_name, session_id
+              <strong>MQTT Unified Payload Schema:</strong> alert_id, audio_id, snapshot_id, verdict, classification, confidence, risk_level, reason, flags, evidence, transcript, snapshot_path, timestamp, device_name, counter_id, session_id
             </div>
           </>
         )}
       </div>
 
-      {/* Audio Upload */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Audio Cloud Upload API */}
+      <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <h3>Audio Cloud Upload API (ProtectQube AI Cloud)</h3>
-            <div className="form-hint">Upload recordings to external Cloud API. Matches multipart/form-data schema (file + category).</div>
+            <h3>Audio Evidence Cloud Upload API</h3>
+            <div className="form-hint">Uploads recording file (multipart/form-data) to Cloud API. The returned audio_id is sent in MQTT payload.</div>
           </div>
-          <Toggle checked={uploadEnabled} onChange={setUploadEnabled} />
+          <Toggle checked={audioUploadEnabled} onChange={setAudioUploadEnabled} />
         </div>
 
-        {uploadEnabled && (
+        {audioUploadEnabled && (
           <>
-            <SettingRow label="Upload URL" hint="POST endpoint that receives the audio file (e.g. ProtectQube AI Cloud API)">
-              <input className="form-input" value={uploadUrl} onChange={e => setUploadUrl(e.target.value)} placeholder="https://api.protectqube.ai/api/v1/voice/ai-alerts/file" />
+            <SettingRow label="Upload Endpoint URL" hint="POST endpoint that receives the audio file (e.g. ProtectQube AI Cloud API)">
+              <input className="form-input" value={audioUploadUrl} onChange={e => setAudioUploadUrl(e.target.value)} placeholder="https://api.protectqube.ai/api/v1/voice/ai-alerts/file" />
             </SettingRow>
             <SettingRow label="API Key / Token">
-              <input type="password" className="form-input" value={uploadKey} onChange={e => setUploadKey(e.target.value)} placeholder="Bearer token / API key" />
+              <input type="password" className="form-input" value={audioUploadKey} onChange={e => setAudioUploadKey(e.target.value)} placeholder="Bearer token / API key" />
             </SettingRow>
             <SettingRow label="Form Field Category" hint="Text field key 'category' sent in multipart form-data (e.g. 'detections')">
-              <input className="form-input" value={uploadCategory} onChange={e => setUploadCategory(e.target.value)} placeholder="detections" />
+              <input className="form-input" value={audioUploadCategory} onChange={e => setAudioUploadCategory(e.target.value)} placeholder="detections" />
             </SettingRow>
-            <SettingRow label="ID JSON Path" hint="Dot-notation path to extract unique ID from response. E.g.: 'id' or 'data.id'">
-              <input className="form-input" value={uploadIdPath} onChange={e => setUploadIdPath(e.target.value)} placeholder="id" />
+            <SettingRow label="Response ID Path" hint="Dot-notation path to extract unique audio ID from JSON response (e.g. 'id' or 'data.id')">
+              <input className="form-input" value={audioUploadIdPath} onChange={e => setAudioUploadIdPath(e.target.value)} placeholder="id" />
             </SettingRow>
           </>
         )}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Snapshot Cloud Upload API & Camera Settings */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <h3>Snapshot Evidence & Camera Capture</h3>
+            <div className="form-hint">Capture camera snapshot images on events and optionally upload to Cloud API for snapshot_id evidence.</div>
+          </div>
+          <Toggle checked={cameraEnabled} onChange={setCameraEnabled} />
+        </div>
+
+        {cameraEnabled && (
+          <>
+            <SettingRow label="Snapshot Source Mode" hint="Select how camera images are captured">
+              <select className="form-select" value={cameraSource} onChange={e => setCameraSource(e.target.value)}>
+                <option value="protectqube">ProtectQube AI Engine API (Recommended)</option>
+                <option value="rtsp">Direct RTSP Stream Capture (OpenCV)</option>
+                <option value="http">Direct HTTP Snapshot URL</option>
+              </select>
+            </SettingRow>
+
+            {cameraSource === 'protectqube' && (
+              <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
+                <input className="form-input" value={cameraPqUrl} onChange={e => setCameraPqUrl(e.target.value)} placeholder="http://localhost:8000" />
+              </SettingRow>
+            )}
+
+            <SettingRow label="Snapshot Capture Timeout" hint="Maximum seconds to wait for camera snapshot response">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="number" className="form-input" value={cameraTimeout} onChange={e => setCameraTimeout(Number(e.target.value))} min={1} max={30} style={{ width: 80 }} />
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
+              </div>
+            </SettingRow>
+
+            <SettingRow label="Trigger Snapshot on Verdicts" hint="Select which event classifications trigger camera snapshot">
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 6 }}>
+                {['FRAUD', 'SUSPICIOUS', 'NORMAL'].map(v => (
+                  <label key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+                    <input type="checkbox" checked={cameraVerdicts.includes(v)} onChange={() => toggleVerdict(v)} />
+                    <span style={{ fontWeight: 500 }}>{v}</span>
+                  </label>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow label="Take Snapshot on Normal Conversations" hint="Capture camera photo even when conversation is evaluated as NORMAL">
+              <Toggle checked={snapOnNormal} onChange={setSnapOnNormal} />
+            </SettingRow>
+
+            {/* Snapshot Cloud Upload Sub-section */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0 }}>Snapshot Cloud Upload API</h4>
+                  <div className="form-hint">Uploads snapshot photo (multipart/form-data) to Cloud API. Returned snapshot_id is sent in MQTT payload.</div>
+                </div>
+                <Toggle checked={snapshotUploadEnabled} onChange={setSnapshotUploadEnabled} />
+              </div>
+
+              {snapshotUploadEnabled && (
+                <>
+                  <SettingRow label="Upload Endpoint URL" hint="POST endpoint that receives the snapshot image file">
+                    <input className="form-input" value={snapshotUploadUrl} onChange={e => setSnapshotUploadUrl(e.target.value)} placeholder="https://api.protectqube.ai/api/v1/voice/ai-alerts/file" />
+                  </SettingRow>
+                  <SettingRow label="API Key / Token">
+                    <input type="password" className="form-input" value={snapshotUploadKey} onChange={e => setSnapshotUploadKey(e.target.value)} placeholder="Bearer token / API key" />
+                  </SettingRow>
+                  <SettingRow label="Form Field Category" hint="Text field key 'category' sent in multipart form-data (e.g. 'detections')">
+                    <input className="form-input" value={snapshotUploadCategory} onChange={e => setSnapshotUploadCategory(e.target.value)} placeholder="detections" />
+                  </SettingRow>
+                  <SettingRow label="Response ID Path" hint="Dot-notation path to extract unique snapshot ID from JSON response (e.g. 'id' or 'data.id')">
+                    <input className="form-input" value={snapshotUploadIdPath} onChange={e => setSnapshotUploadIdPath(e.target.value)} placeholder="id" />
+                  </SettingRow>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
         <SaveBtn saving={saving} onClick={handleSave} />
       </div>
-    </>
+    </div>
   )
 }
 
@@ -1166,118 +1327,7 @@ function SecurityTab() {
   )
 }
 
-function CameraCloudTab({ config, onSave, saving }) {
-  const [enabled, setEnabled] = useState(config.camera_snapshot_enabled ?? false)
-  const [source, setSource] = useState(config.camera_snapshot_source ?? 'protectqube')
-  const [pqUrl, setPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8000')
-  const [timeout, setTimeoutVal] = useState(config.camera_snapshot_timeout ?? 5)
-  const [verdicts, setVerdicts] = useState(config.camera_snapshot_on_verdicts || ['FRAUD', 'SUSPICIOUS'])
-  
-  const [sendNormalCloud, setSendNormalCloud] = useState(config.send_normal_conversations_to_cloud ?? false)
-  const [sendNormalMqtt, setSendNormalMqtt] = useState(config.send_normal_conversations_to_mqtt ?? false)
-  const [mqttNormalTopic, setMqttNormalTopic] = useState(config.mqtt_normal_topic ?? 'voiceguard/normal/events')
-  const [snapOnNormal, setSnapOnNormal] = useState(config.snapshot_on_normal_conversation ?? false)
 
-  const toggleVerdict = (v) => {
-    setVerdicts(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])
-  }
-
-  const handleSave = () => {
-    onSave({
-      camera_snapshot_enabled: enabled,
-      camera_snapshot_source: source,
-      camera_snapshot_protectqube_url: pqUrl,
-      camera_snapshot_timeout: timeout,
-      camera_snapshot_on_verdicts: verdicts,
-      send_normal_conversations_to_cloud: sendNormalCloud,
-      send_normal_conversations_to_mqtt: sendNormalMqtt,
-      mqtt_normal_topic: mqttNormalTopic,
-      snapshot_on_normal_conversation: snapOnNormal,
-    })
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 800 }}>
-      {/* Camera Snapshot Card */}
-      <div className="card">
-        <h3 style={{ marginBottom: 4 }}>Camera Snapshot Integration</h3>
-        <p className="form-help" style={{ marginBottom: 16 }}>
-          Automatically capture camera snapshot images when fraud, suspicious, or normal SOP conversations are detected.
-        </p>
-
-        <SettingRow label="Enable Camera Snapshot" hint="Master switch to trigger camera image capture on events">
-          <Toggle checked={enabled} onChange={setEnabled} />
-        </SettingRow>
-
-        {enabled && (
-          <>
-            <SettingRow label="Snapshot Source Mode" hint="Select how camera images are captured">
-              <select className="form-select" value={source} onChange={e => setSource(e.target.value)}>
-                <option value="protectqube">ProtectQube AI Engine API (Recommended)</option>
-                <option value="rtsp">Direct RTSP Stream Capture (OpenCV)</option>
-                <option value="http">Direct HTTP Snapshot URL</option>
-              </select>
-            </SettingRow>
-
-            {source === 'protectqube' && (
-              <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
-                <input className="form-input" value={pqUrl} onChange={e => setPqUrl(e.target.value)} placeholder="http://localhost:8000" />
-              </SettingRow>
-            )}
-
-            <SettingRow label="Snapshot Timeout" hint="Maximum seconds to wait for camera snapshot response">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="number" className="form-input" value={timeout} onChange={e => setTimeoutVal(Number(e.target.value))} min={1} max={30} style={{ width: 80 }} />
-                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>seconds</span>
-              </div>
-            </SettingRow>
-
-            <SettingRow label="Trigger Snapshot on Verdicts" hint="Select which event classifications trigger camera snapshot">
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 6 }}>
-                {['FRAUD', 'SUSPICIOUS', 'NORMAL'].map(v => (
-                  <label key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
-                    <input type="checkbox" checked={verdicts.includes(v)} onChange={() => toggleVerdict(v)} />
-                    <span style={{ fontWeight: 500 }}>{v}</span>
-                  </label>
-                ))}
-              </div>
-            </SettingRow>
-          </>
-        )}
-      </div>
-
-      {/* Normal Conversation Cloud Dispatch Card */}
-      <div className="card">
-        <h3 style={{ marginBottom: 4 }}>Normal Conversation & Cloud Dispatch</h3>
-        <p className="form-help" style={{ marginBottom: 16 }}>
-          Optionally dispatch non-fraud (SOP compliance / greeting) conversations and photos to Dashboard or MQTT Broker.
-        </p>
-
-        <SettingRow label="Send Normal Conversations to Cloud/Dashboard" hint="Stream normal SOP conversation logs to cloud backend">
-          <Toggle checked={sendNormalCloud} onChange={setSendNormalCloud} />
-        </SettingRow>
-
-        <SettingRow label="Publish Normal Conversations over MQTT" hint="Publish normal events to a dedicated MQTT topic">
-          <Toggle checked={sendNormalMqtt} onChange={setSendNormalMqtt} />
-        </SettingRow>
-
-        {sendNormalMqtt && (
-          <SettingRow label="Normal MQTT Topic" hint="MQTT topic name for normal conversation events">
-            <input className="form-input" value={mqttNormalTopic} onChange={e => setMqttNormalTopic(e.target.value)} placeholder="voiceguard/normal/events" />
-          </SettingRow>
-        )}
-
-        <SettingRow label="Take Snapshot on Normal Conversations" hint="Capture camera snapshot even when conversation is evaluated as NORMAL">
-          <Toggle checked={snapOnNormal} onChange={setSnapOnNormal} />
-        </SettingRow>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
-        <SaveBtn saving={saving} onClick={handleSave} />
-      </div>
-    </div>
-  )
-}
 
 function CountersTab({ config, devices, onSave, saving }) {
   const [counters, setCounters] = useState(() => {
