@@ -597,11 +597,27 @@ class PipelineOrchestrator:
                         except Exception as snap_err:
                             logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
 
+                    audio_unique_id = None
+                    record_verdict = self._rc.get("record_on_verdict", "BOTH")
+                    if record_verdict == "ALL" and self._recorder and item.get("pcm"):
+                        try:
+                            norm_rec = self._recorder.save_exact_segment(
+                                alert_id=segment_id,
+                                verdict="NORMAL",
+                                segment_timestamp=timestamp,
+                                pcm=item.get("pcm")
+                            )
+                            if norm_rec and self._rc.get("audio_upload_enabled", False) and self._audio_uploader:
+                                audio_unique_id = self._audio_uploader.upload(norm_rec["path"])
+                                logger.info(f"[Normal Event {segment_id}] Audio uploaded, audio_id={audio_unique_id}")
+                        except Exception as aud_err:
+                            logger.error(f"[Normal Event {segment_id}] Audio recording/upload error: {aud_err}")
+
                     normal_payload = {
                         "segment_id": segment_id,
                         "session_id": self._session_id,
-                        "audio_id": "",
-                        "audio_unique_id": "",
+                        "audio_id": audio_unique_id or "",
+                        "audio_unique_id": audio_unique_id or "",
                         "snapshot_id": snapshot_unique_id or "",
                         "snapshot_unique_id": snapshot_unique_id or "",
                         "verdict": fraud_result.verdict,
