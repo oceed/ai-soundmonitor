@@ -130,8 +130,11 @@ class PipelineOrchestrator:
         self._llm_thread.start()
 
         # Start audio capture
-        self._init_capture()
-        self._capture.start()
+        try:
+            self._init_capture()
+            self._capture.start()
+        except Exception as e:
+            logger.error(f"[Orchestrator] Audio capture start failed (mic offline or unavailable): {e}")
 
         logger.info("[Orchestrator] Pipeline started")
         self._emit("pipeline_status", {
@@ -341,7 +344,7 @@ class PipelineOrchestrator:
         try:
             from services.camera_service import CameraSnapshotService
             self._camera_service = CameraSnapshotService(
-                storage_path=self._rc.get("storage_path", "/app/storage")
+                storage_path=self._rc.get("storage_path", self._settings.storage_path)
             )
             logger.info("[Orchestrator] CameraSnapshotService initialized")
         except Exception as e:
