@@ -206,9 +206,19 @@ class PipelineOrchestrator:
             self._capture.stop()
 
         with self._lock:
-            # 1. Reinitialize STT/LLM dynamically with new modes or settings
+            # 1. Reinitialize STT/LLM/MQTT/Uploaders dynamically with new settings
             self._init_stt()
             self._init_llm()
+            if self._mqtt:
+                try:
+                    self._mqtt.disconnect()
+                except Exception:
+                    pass
+                self._mqtt = None
+            self._init_mqtt()
+            self._init_audio_uploader()
+            self._init_snapshot_uploader()
+            self._init_camera_service()
 
             # 2. Update Recorder dynamically
             if self._recorder:

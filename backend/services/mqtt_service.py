@@ -29,10 +29,14 @@ class MQTTService:
             import paho.mqtt.client as mqtt
 
             client_id = self._rc.get("mqtt_client_id", "voiceguard-fraud-detector")
-            self._client = mqtt.Client(
-                client_id=client_id,
-                protocol=mqtt.MQTTv5,
-            )
+            # Use MQTTv311 for universal compatibility with all Mosquitto & Cloud brokers
+            try:
+                self._client = mqtt.Client(
+                    client_id=client_id,
+                    protocol=mqtt.MQTTv311,
+                )
+            except Exception:
+                self._client = mqtt.Client(client_id=client_id)
 
             username = self._rc.get("mqtt_username", "")
             password = self._rc.get("mqtt_password", "")
