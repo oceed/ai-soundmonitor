@@ -59,16 +59,23 @@ class AudioUploadService:
             logger.error(f"[AudioUpload] File not found: {file_path}")
             return None
 
+        category = self._rc.get("audio_upload_category", "detections")
+        data_fields = {"category": category} if category else {}
+
         headers = {}
         if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+            if api_key.startswith("Bearer "):
+                headers["Authorization"] = api_key
+            else:
+                headers["Authorization"] = f"Bearer {api_key}"
+                headers["x-api-key"] = api_key
 
         try:
             with open(path, "rb") as f:
                 mime = "audio/ogg" if path.suffix == ".ogg" else "audio/wav"
                 files = {"file": (path.name, f, mime)}
                 with httpx.Client(timeout=timeout) as client:
-                    resp = client.post(url, files=files, headers=headers)
+                    resp = client.post(url, files=files, data=data_fields, headers=headers)
                     resp.raise_for_status()
                     data = resp.json()
 

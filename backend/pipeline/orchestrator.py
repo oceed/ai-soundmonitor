@@ -64,6 +64,7 @@ class PipelineOrchestrator:
         self._llm = None
         self._mqtt = None
         self._audio_uploader = None
+        self._camera_service = None
 
         # Worker threads
         self._stt_thread: Optional[threading.Thread] = None
@@ -104,6 +105,7 @@ class PipelineOrchestrator:
         self._init_recorder()
         self._init_mqtt()
         self._init_audio_uploader()
+        self._init_camera_service()
 
         # Create DB session
         self._session_id = self._db.create_session(
@@ -254,8 +256,8 @@ class PipelineOrchestrator:
         rc = self._rc
         self._stt = STTEngine(
             mode=rc.get("stt_mode", s.stt_mode),
-            groq_api_key=s.groq_api_key,
-            groq_model=s.groq_stt_model,
+            groq_api_key=rc.get("groq_api_key") or s.groq_api_key,
+            groq_model=rc.get("groq_stt_model", s.groq_stt_model),
             local_model=rc.get("local_whisper_model", s.local_whisper_model),
             local_device=s.local_whisper_device,
             local_compute_type=s.local_whisper_compute_type,
@@ -269,8 +271,8 @@ class PipelineOrchestrator:
         rc = self._rc
         self._llm = LLMEngine(
             mode=rc.get("llm_mode", s.llm_mode),
-            groq_api_key=s.groq_api_key,
-            groq_model=s.groq_llm_model,
+            groq_api_key=rc.get("groq_api_key") or s.groq_api_key,
+            groq_model=rc.get("groq_llm_model", s.groq_llm_model),
             local_url=rc.get("local_llm_url", s.local_llm_url),
             local_model=rc.get("local_llm_model", s.local_llm_model),
             local_endpoint_type=rc.get("local_llm_endpoint_type", s.local_llm_endpoint_type),
@@ -334,6 +336,16 @@ class PipelineOrchestrator:
             self._audio_uploader = AudioUploadService(self._rc)
         except Exception as e:
             logger.error(f"[Orchestrator] Audio uploader init failed: {e}")
+
+    def _init_camera_service(self) -> None:
+        try:
+            from services.camera_service import CameraSnapshotService
+            self._camera_service = CameraSnapshotService(
+                storage_path=self._rc.get("storage_path", "/app/storage")
+            )
+            logger.info("[Orchestrator] CameraSnapshotService initialized")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Camera service init failed: {e}")
 
     # ──────────────────────────────────────────────────────
     # Callbacks from AudioCapture
@@ -477,6 +489,35 @@ class PipelineOrchestrator:
                 verdict_key = fraud_result.verdict if fraud_result.verdict in self._stats else "ERROR"
                 self._stats[verdict_key] = self._stats.get(verdict_key, 0) + 1
 
+            # Camera Snapshot Trigger
+            camera_enabled = bool(self._rc.get("camera_snapshot_enabled", False))
+            target_verdicts = set(self._rc.get("camera_snapshot_on_verdicts", ["FRAUD", "SUSPICIOUS"]))
+            snapshot_on_normal = bool(self._rc.get("snapshot_on_normal_conversation", False))
+            classification = fraud_result.classification
+
+            should_snapshot = camera_enabled and (
+                classification in target_verdicts or (classification == "NORMAL" and snapshot_on_normal)
+            )
+
+            snapshot_path = None
+            if should_snapshot and self._camera_service:
+                counter_info = {"id": self._counter_id, "name": self._counter_name}
+                counters = self._rc.get("counters", [])
+                for c in counters:
+                    if c.get("id") == self._counter_id:
+                        counter_info = c
+                        break
+                try:
+                    snapshot_path = self._camera_service.capture_snapshot(
+                        counter_info=counter_info,
+                        source=self._rc.get("camera_snapshot_source", "protectqube"),
+                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000"),
+                        timeout=int(self._rc.get("camera_snapshot_timeout", 5)),
+                        verdict=classification,
+                    )
+                except Exception as snap_err:
+                    logger.error(f"[Orchestrator] Error capturing snapshot: {snap_err}")
+
             # Persist to DB
             segment_id = self._db.save_segment(
                 session_id=self._session_id,
@@ -489,6 +530,7 @@ class PipelineOrchestrator:
                 stt_mode=stt.mode_used,
                 llm_mode=fraud_result.mode_used,
                 counter_id=self._counter_id,
+                snapshot_path=snapshot_path,
             )
 
             # Broadcast result
@@ -497,7 +539,7 @@ class PipelineOrchestrator:
                 "segment_id": segment_id,
                 "transcript": stt.text,
                 "verdict": fraud_result.verdict,
-                "classification": fraud_result.classification,
+                "classification": classification,
                 "confidence": fraud_result.confidence,
                 "risk_level": fraud_result.risk_level,
                 "reason": fraud_result.reason,
@@ -508,12 +550,36 @@ class PipelineOrchestrator:
                 "stt_mode": stt.mode_used,
                 "llm_mode": fraud_result.mode_used,
                 "timestamp": timestamp.isoformat(),
+                "snapshot_path": snapshot_path,
             })
+
+            # Normal Conversation Dispatch to MQTT/Cloud
+            send_normal_mqtt = bool(self._rc.get("send_normal_conversations_to_mqtt", False))
+            send_normal_cloud = bool(self._rc.get("send_normal_conversations_to_cloud", False))
+            if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt:
+                try:
+                    normal_payload = {
+                        "segment_id": segment_id,
+                        "session_id": self._session_id,
+                        "verdict": fraud_result.verdict,
+                        "classification": classification,
+                        "confidence": fraud_result.confidence,
+                        "transcript": stt.text,
+                        "reason": fraud_result.reason,
+                        "snapshot_path": snapshot_path or "",
+                        "timestamp": timestamp.isoformat(),
+                        "device_name": self._rc.get("device_name", ""),
+                        "counter_id": self._counter_id,
+                    }
+                    self._mqtt.publish_normal(normal_payload)
+                    logger.info(f"[Normal Event {segment_id}] Published to MQTT/Cloud")
+                except Exception as ne_err:
+                    logger.error(f"[Normal Event {segment_id}] MQTT publish failed: {ne_err}")
 
             # Handle alert or record segment
             record_verdict = self._rc.get("record_on_verdict", "BOTH")
             alert_verdicts = set(self._rc.get("alert_verdicts", []))
-            is_alert = fraud_result.classification in alert_verdicts or fraud_result.is_alert
+            is_alert = classification in alert_verdicts or fraud_result.is_alert
             should_record_all = (record_verdict == "ALL")
 
             if is_alert or should_record_all:
@@ -527,6 +593,7 @@ class PipelineOrchestrator:
                     stt=stt,
                     duration_s=item["duration_s"],
                     pcm=item.get("pcm"),
+                    snapshot_path=snapshot_path,
                 )
 
             self._llm_queue.task_done()
@@ -537,7 +604,7 @@ class PipelineOrchestrator:
     # Alert Handler
     # ──────────────────────────────────────────────────────
 
-    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None) -> None:
+    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None, snapshot_path=None) -> None:
         logger.info(
             f"[Alert] Segment #{segment_no}: {fraud_result.classification} "
             f"({fraud_result.confidence}%) — {fraud_result.reason[:60]}"
@@ -553,6 +620,7 @@ class PipelineOrchestrator:
             pre_buffer_s=self._rc.get("pre_buffer_seconds", 10.0),
             post_buffer_s=self._rc.get("post_buffer_seconds", 15.0),
             counter_id=self._counter_id,
+            snapshot_path=snapshot_path,
         )
 
         # Broadcast UI alert
@@ -568,6 +636,7 @@ class PipelineOrchestrator:
             "transcript": stt.text,
             "timestamp": timestamp.isoformat(),
             "has_recording": False,
+            "snapshot_path": snapshot_path,
         })
 
         # Trigger recording + MQTT in background thread
@@ -651,6 +720,7 @@ class PipelineOrchestrator:
                     "flags": fraud_result.active_flags,
                     "evidence": fraud_result.evidence,
                     "transcript": alert_data.get("transcript", "") if alert_data else "",
+                    "snapshot_path": alert_data.get("snapshot_path", "") if alert_data else "",
                     "timestamp": timestamp.isoformat(),
                     "device_name": self._rc.get("device_name", ""),
                     "session_id": self._session_id,

@@ -47,7 +47,7 @@ async def get_config(
     """Return all runtime config (merged with defaults)."""
     cfg = runtime_config.get_all()
     # Mask sensitive values
-    for key in ("mqtt_password", "audio_upload_api_key"):
+    for key in ("mqtt_password", "audio_upload_api_key", "groq_api_key"):
         if cfg.get(key):
             cfg[key] = "***"
     return cfg
@@ -60,9 +60,10 @@ async def patch_config(
     _: User = Depends(get_current_user),
 ):
     """Update runtime config keys. Persists to DB and updates in-memory cache."""
-    updates = dict(body.updates)
+    # Filter out masked placeholders
+    updates = {k: v for k, v in updates.items() if v != "***"}
     if not updates:
-        raise HTTPException(status_code=400, detail="No updates provided")
+        return {"message": "No changes to save"}
 
     # If categories or prompt base are being updated, recompile the system prompt
     if "fraud_categories" in updates or "system_prompt_base" in updates:

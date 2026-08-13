@@ -84,6 +84,26 @@ class MQTTService:
             logger.error(f"[MQTT] Publish error: {e}")
             return False
 
+    def publish_normal(self, payload: Dict[str, Any], topic: Optional[str] = None) -> bool:
+        if not self._client or not self._connected:
+            logger.warning("[MQTT] Not connected, skipping normal event publish")
+            return False
+
+        target_topic = topic or self._rc.get("mqtt_normal_topic", "voiceguard/normal/events")
+        qos = int(self._rc.get("mqtt_qos", 1))
+
+        try:
+            json_payload = json.dumps(payload, ensure_ascii=False, default=str)
+            result = self._client.publish(target_topic, json_payload, qos=qos)
+            if result.rc == 0:
+                logger.info(f"[MQTT] Published normal event to {target_topic}")
+                return True
+            logger.warning(f"[MQTT] Publish normal failed rc={result.rc}")
+            return False
+        except Exception as e:
+            logger.error(f"[MQTT] Publish normal error: {e}")
+            return False
+
     def _on_connect(self, client, userdata, flags, reason_code, properties) -> None:
         self._connected = reason_code == 0
         if self._connected:

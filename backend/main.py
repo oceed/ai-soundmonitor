@@ -83,6 +83,7 @@ async def lifespan(app: FastAPI):
     # 1. Create storage dirs
     Path(settings.storage_path).mkdir(parents=True, exist_ok=True)
     (Path(settings.storage_path) / "recordings").mkdir(exist_ok=True)
+    (Path(settings.storage_path) / "snapshots").mkdir(exist_ok=True)
 
     # 2. Init DB
     await init_db()
@@ -225,6 +226,12 @@ app.include_router(recordings_router)
 app.include_router(config_router)
 app.include_router(devices_router)
 app.include_router(sessions_router)
+
+from fastapi.staticfiles import StaticFiles
+snapshots_dir = Path(settings.storage_path) / "snapshots"
+snapshots_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/storage", StaticFiles(directory=settings.storage_path), name="storage")
+app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
 
 
 # ─────────────────────────────────────────────────────────

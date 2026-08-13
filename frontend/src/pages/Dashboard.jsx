@@ -278,11 +278,22 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
 
       {/* Reason */}
       {item.reason && (
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 6 }}>
           {item.reason}
         </div>
       )}
 
+      {/* Camera Snapshot Preview */}
+      {item.snapshot_path && (
+        <div style={{ marginTop: 6, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', maxWidth: 360 }}>
+          <img
+            src={item.snapshot_path.startsWith('http') ? item.snapshot_path : `http://${window.location.hostname}:8013/${item.snapshot_path.replace(/^\//, '')}`}
+            alt="Snapshot"
+            style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 200, objectFit: 'cover' }}
+            onError={(e) => { e.target.style.display = 'none' }}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -566,6 +577,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             llm_ms:         event.llm_ms,
             has_recording:  false,
             alert_id:       null,
+            snapshot_path:  event.snapshot_path,
           }, ...current.feed].slice(0, MAX_FEED)
 
           updated.stats = {
@@ -577,7 +589,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
 
         case 'alert':
           updated.feed = current.feed.map(item =>
-            item.id === event.segment_id ? { ...item, alert_id: event.alert_id } : item
+            item.id === event.segment_id ? { ...item, alert_id: event.alert_id, snapshot_path: event.snapshot_path || item.snapshot_path } : item
           )
           addToast({
             type:     event.verdict === 'FRAUD' ? 'fraud' : 'warning',

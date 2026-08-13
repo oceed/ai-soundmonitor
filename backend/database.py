@@ -66,6 +66,8 @@ async def init_db() -> None:
             ("recording_sessions", "counter_id", "VARCHAR(64)", "default"),
             ("segments", "counter_id", "VARCHAR(64)", "default"),
             ("alerts", "counter_id", "VARCHAR(64)", "default"),
+            ("segments", "snapshot_path", "VARCHAR(512)", ""),
+            ("alerts", "snapshot_path", "VARCHAR(512)", ""),
         ]:
             cursor.execute(f"PRAGMA table_info({table})")
             columns = [info[1] for info in cursor.fetchall()]

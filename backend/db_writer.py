@@ -102,6 +102,7 @@ class DBWriter:
         stt_mode: str,
         llm_mode: str,
         counter_id: str = "default",
+        snapshot_path: Optional[str] = None,
     ) -> int:
         with self._session() as s:
             seg = Segment(
@@ -120,10 +121,18 @@ class DBWriter:
                 stt_mode_used=stt_mode,
                 llm_mode_used=llm_mode,
                 counter_id=counter_id,
+                snapshot_path=snapshot_path,
             )
             s.add(seg)
             s.commit()
             return seg.id
+
+    def update_segment_snapshot(self, segment_id: int, snapshot_path: str) -> None:
+        with self._session() as s:
+            seg = s.get(Segment, segment_id)
+            if seg:
+                seg.snapshot_path = snapshot_path
+                s.commit()
 
     def get_recent_segments(
         self,
@@ -182,6 +191,7 @@ class DBWriter:
         pre_buffer_s: float,
         post_buffer_s: float,
         counter_id: str = "default",
+        snapshot_path: Optional[str] = None,
     ) -> int:
         with self._session() as s:
             alert = Alert(
@@ -198,10 +208,18 @@ class DBWriter:
                 pre_buffer_s=pre_buffer_s,
                 post_buffer_s=post_buffer_s,
                 counter_id=counter_id,
+                snapshot_path=snapshot_path,
             )
             s.add(alert)
             s.commit()
             return alert.id
+
+    def update_alert_snapshot(self, alert_id: int, snapshot_path: str) -> None:
+        with self._session() as s:
+            alert = s.get(Alert, alert_id)
+            if alert:
+                alert.snapshot_path = snapshot_path
+                s.commit()
 
     def update_alert_recording(self, alert_id: int, recording_info: dict) -> None:
         with self._session() as s:
@@ -233,7 +251,10 @@ class DBWriter:
         with self._session() as s:
             alert = s.get(Alert, alert_id)
             if alert:
-                return {"transcript": alert.transcript}
+                return {
+                    "transcript": alert.transcript,
+                    "snapshot_path": alert.snapshot_path or "",
+                }
         return None
 
     def save_continuous_recording(

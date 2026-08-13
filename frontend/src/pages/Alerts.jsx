@@ -366,6 +366,9 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categori
             {alert.recording_ready && (
               <span className="badge badge-info" style={{ fontSize: 9 }}>🔊 REC</span>
             )}
+            {alert.snapshot_path && (
+              <span className="badge badge-accent" style={{ fontSize: 9, background: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' }}>📷 SNAPSHOT</span>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             "{alert.transcript}"
@@ -389,6 +392,23 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categori
       {/* Expanded detail */}
       {expanded && (
         <div style={{ borderTop: `1px solid var(--border)`, padding: '16px', background: 'var(--bg-elevated)' }}>
+          {/* Camera Snapshot Image Preview */}
+          {alert.snapshot_path && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="form-label" style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>📷 Camera Snapshot Evidence</span>
+              </div>
+              <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', maxWidth: 480 }}>
+                <img
+                  src={alert.snapshot_path.startsWith('http') ? alert.snapshot_path : `http://${window.location.hostname}:8013/${alert.snapshot_path.replace(/^\//, '')}`}
+                  alt="Camera Snapshot"
+                  style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 320, objectFit: 'cover' }}
+                  onError={(e) => { e.target.style.display = 'none' }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="grid-2" style={{ gap: 20, marginBottom: 16 }}>
             <div>
               <div className="form-label" style={{ marginBottom: 8 }}>Transcript</div>
