@@ -726,14 +726,14 @@ function NotificationsTab({ config, onSave, saving }) {
   const [audioUploadUrl, setAudioUploadUrl] = useState(config.audio_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
   const [audioUploadKey, setAudioUploadKey] = useState('')
   const [audioUploadCategory, setAudioUploadCategory] = useState(config.audio_upload_category ?? 'detections')
-  const [audioUploadIdPath, setAudioUploadIdPath] = useState(config.audio_upload_id_path ?? 'id')
+  const [audioUploadIdPath, setAudioUploadIdPath] = useState(config.audio_upload_id_path ?? 'data.id')
 
   // Snapshot Upload API
   const [snapshotUploadEnabled, setSnapshotUploadEnabled] = useState(config.snapshot_upload_enabled ?? false)
   const [snapshotUploadUrl, setSnapshotUploadUrl] = useState(config.snapshot_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
   const [snapshotUploadKey, setSnapshotUploadKey] = useState('')
   const [snapshotUploadCategory, setSnapshotUploadCategory] = useState(config.snapshot_upload_category ?? 'detections')
-  const [snapshotUploadIdPath, setSnapshotUploadIdPath] = useState(config.snapshot_upload_id_path ?? 'id')
+  const [snapshotUploadIdPath, setSnapshotUploadIdPath] = useState(config.snapshot_upload_id_path ?? 'data.id')
 
   // Camera Snapshot Settings
   const [cameraEnabled, setCameraEnabled] = useState(config.camera_snapshot_enabled ?? false)

@@ -83,6 +83,14 @@ class SnapshotUploadService:
                     data = resp.json()
 
             unique_id = _extract_by_path(data, id_path)
+            if not unique_id:
+                # Smart fallback for nested response structures e.g. data.id
+                for alt_path in ["data.id", "id", "data.file_id", "file_id"]:
+                    unique_id = _extract_by_path(data, alt_path)
+                    if unique_id:
+                        logger.info(f"[SnapshotUpload] Extracted ID using fallback path '{alt_path}': {unique_id}")
+                        break
+
             if unique_id:
                 logger.info(f"[SnapshotUpload] Uploaded {path.name} → snapshot_id={unique_id}")
                 return unique_id
