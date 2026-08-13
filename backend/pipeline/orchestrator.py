@@ -584,9 +584,26 @@ class PipelineOrchestrator:
             send_normal_cloud = bool(self._rc.get("send_normal_conversations_to_cloud", False))
             if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt:
                 try:
+                    snapshot_unique_id = None
+                    if snapshot_path and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+                        try:
+                            storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+                            target_file = storage_base / snapshot_path.lstrip('/')
+                            if not target_file.exists():
+                                target_file = Path(snapshot_path)
+                            if target_file.exists():
+                                snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
+                                logger.info(f"[Normal Event {segment_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
+                        except Exception as snap_err:
+                            logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
+
                     normal_payload = {
                         "segment_id": segment_id,
                         "session_id": self._session_id,
+                        "audio_id": "",
+                        "audio_unique_id": "",
+                        "snapshot_id": snapshot_unique_id or "",
+                        "snapshot_unique_id": snapshot_unique_id or "",
                         "verdict": fraud_result.verdict,
                         "classification": classification,
                         "confidence": fraud_result.confidence,
