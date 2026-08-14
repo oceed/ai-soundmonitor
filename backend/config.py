@@ -243,6 +243,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     ],
     "alert_verdicts": ["FRAUD", "SUSPICIOUS"],
     "device_name": "VoiceGuard-Store-01",
+    "device_id": "edge-device-01",
     # These mirror .env but can be overridden at runtime
     "stt_mode": "auto",
     "stt_language": "id",

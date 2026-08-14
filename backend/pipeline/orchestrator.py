@@ -617,9 +617,7 @@ class PipelineOrchestrator:
                         "segment_id": segment_id,
                         "session_id": self._session_id,
                         "audio_id": audio_unique_id or "",
-                        "audio_unique_id": audio_unique_id or "",
                         "snapshot_id": snapshot_unique_id or "",
-                        "snapshot_unique_id": snapshot_unique_id or "",
                         "verdict": fraud_result.verdict,
                         "classification": classification,
                         "confidence": fraud_result.confidence,
@@ -627,6 +625,7 @@ class PipelineOrchestrator:
                         "reason": fraud_result.reason,
                         "snapshot_path": snapshot_path or "",
                         "timestamp": timestamp.isoformat(),
+                        "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
                         "device_name": self._rc.get("device_name", ""),
                         "counter_id": self._counter_id,
                     }
@@ -785,10 +784,9 @@ class PipelineOrchestrator:
             try:
                 payload = {
                     "alert_id": alert_id,
+                    "session_id": self._session_id,
                     "audio_id": audio_unique_id or "",
-                    "audio_unique_id": audio_unique_id or "",
                     "snapshot_id": snapshot_unique_id or "",
-                    "snapshot_unique_id": snapshot_unique_id or "",
                     "verdict": fraud_result.verdict,
                     "classification": fraud_result.classification,
                     "confidence": fraud_result.confidence,
@@ -799,9 +797,9 @@ class PipelineOrchestrator:
                     "transcript": alert_data.get("transcript", "") if alert_data else "",
                     "snapshot_path": snap_path_str,
                     "timestamp": timestamp.isoformat(),
+                    "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
                     "device_name": self._rc.get("device_name", ""),
                     "counter_id": self._counter_id,
-                    "session_id": self._session_id,
                 }
                 published = self._mqtt.publish(payload)
                 if published:
