@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Retention
     retention_days: int = 7
 
+    # Device Identification
+    device_id: str = "edge-device-01"
+    device_name: str = "VoiceGuard-Store-01"
+
     # MQTT
     mqtt_enabled: bool = False
     mqtt_broker_host: str = "localhost"

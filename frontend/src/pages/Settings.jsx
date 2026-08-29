@@ -198,10 +198,14 @@ function Toggle({ checked, onChange }) {
 
 function GeneralTab({ config, onSave, saving }) {
   const [retDays, setRetDays] = useState(config.retention_days ?? 7)
+  const [devId, setDevId] = useState(config.device_id ?? 'edge-device-01')
   const [devName, setDevName] = useState(config.device_name ?? 'VoiceGuard-Store-01')
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
+      <SettingRow label="Device ID" hint="Unique hardware/node identifier in alerts and MQTT (e.g. edge-device-01)">
+        <input className="form-input" value={devId} onChange={e => setDevId(e.target.value)} />
+      </SettingRow>
       <SettingRow label="Device Name" hint="Identifier for this store/location in alerts and MQTT">
         <input className="form-input" value={devName} onChange={e => setDevName(e.target.value)} />
       </SettingRow>
@@ -212,7 +216,7 @@ function GeneralTab({ config, onSave, saving }) {
         </div>
       </SettingRow>
       <div style={{ paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-        <SaveBtn saving={saving} onClick={() => onSave({ retention_days: retDays, device_name: devName })} />
+        <SaveBtn saving={saving} onClick={() => onSave({ retention_days: retDays, device_name: devName, device_id: devId })} />
       </div>
     </div>
   )
