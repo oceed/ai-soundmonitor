@@ -338,7 +338,7 @@ class PipelineOrchestrator:
             return
         try:
             from services.mqtt_service import MQTTService
-            self._mqtt = MQTTService(self._rc)
+            self._mqtt = MQTTService(self._rc, counter_id=self._counter_id)
             self._mqtt.connect()
         except Exception as e:
             logger.error(f"[Orchestrator] MQTT init failed: {e}")

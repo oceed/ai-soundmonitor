@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class MQTTService:
-    def __init__(self, runtime_config):
+    def __init__(self, runtime_config, counter_id: Optional[str] = None):
         self._rc = runtime_config
+        self._counter_id = counter_id
         self._client = None
         self._lock = threading.Lock()
         self._connected = False
@@ -28,7 +29,8 @@ class MQTTService:
         try:
             import paho.mqtt.client as mqtt
 
-            client_id = self._rc.get("mqtt_client_id", "voiceguard-fraud-detector")
+            base_client_id = self._rc.get("mqtt_client_id", "voiceguard-fraud-detector")
+            client_id = f"{base_client_id}-{self._counter_id}" if self._counter_id else base_client_id
             username = self._rc.get("mqtt_username", "")
             password = self._rc.get("mqtt_password", "")
             host = self._rc.get("mqtt_broker_host", "72.60.78.162")
