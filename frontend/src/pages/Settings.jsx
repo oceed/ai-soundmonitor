@@ -1,14 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import {
   getConfig, patchConfig, getPrompt, updatePrompt,
   getAudioDevices, changePassword
 } from '../api/config'
 import { useToast } from '../components/NotificationToast'
 
-const TABS = ['General', 'Counters', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications & Cloud', 'System Prompt', 'Security']
+const ADMIN_TABS = ['General', 'Counters', 'Audio & VAD', 'STT', 'LLM', 'Recording', 'Notifications & Cloud', 'System Prompt', 'Security']
+const USER_TABS = ['General', 'Counters', 'Audio & VAD', 'Recording', 'Detection Rules', 'Security']
 
 export function Settings({ liveDevices }) {
+  const { user } = useAuth()
+  const isAdmin = (user?.role ?? 'admin') === 'admin' && user?.username !== 'user'
+
+  const tabs = useMemo(() => {
+    return isAdmin ? ADMIN_TABS : USER_TABS
+  }, [isAdmin])
+
   const [activeTab, setActiveTab] = useState('General')
+
+  // Auto-switch tab if current active tab is not accessible
+  useEffect(() => {
+    if (!tabs.includes(activeTab)) {
+      setActiveTab(tabs[0] || 'General')
+    }
+  }, [tabs, activeTab])
   const [config, setConfig] = useState({})
   const [prompt, setPrompt] = useState('')
   const [promptBase, setPromptBase] = useState('')
@@ -108,7 +124,7 @@ export function Settings({ liveDevices }) {
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 24px' }}>
         {/* Tabs */}
         <div className="tabs" style={{ flexShrink: 0 }}>
-          {TABS.map(t => (
+          {tabs.map(t => (
             <button key={t} className={`tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
               {t}
             </button>
@@ -137,11 +153,11 @@ export function Settings({ liveDevices }) {
               setShowAdvanced={setShowAdvanced}
             />
           )}
-          {activeTab === 'STT' && <STTTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'LLM' && <LLMTab config={config} onSave={save} saving={saving} />}
+          {isAdmin && activeTab === 'STT' && <STTTab config={config} onSave={save} saving={saving} />}
+          {isAdmin && activeTab === 'LLM' && <LLMTab config={config} onSave={save} saving={saving} />}
           {activeTab === 'Recording' && <RecordingTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'Notifications & Cloud' && <NotificationsTab config={config} onSave={save} saving={saving} />}
-          {activeTab === 'System Prompt' && (
+          {isAdmin && activeTab === 'Notifications & Cloud' && <NotificationsTab config={config} onSave={save} saving={saving} />}
+          {(activeTab === 'System Prompt' || activeTab === 'Detection Rules') && (
             <PromptTab
               prompt={prompt}
               setPrompt={setPrompt}
@@ -150,6 +166,7 @@ export function Settings({ liveDevices }) {
               onSave={savePrompt}
               saving={saving}
               config={config}
+              isAdmin={isAdmin}
             />
           )}
           {activeTab === 'Security' && <SecurityTab />}
@@ -637,6 +654,8 @@ function LLMTab({ config, onSave, saving }) {
 
 function RecordingTab({ config, onSave, saving }) {
   const [preBuffer, setPreBuffer] = useState(config.pre_buffer_seconds ?? 10)
+  const [maxDiskUsage, setMaxDiskUsage] = useState(config.max_disk_usage_percent ?? 85)
+  const [continuousMaxGb, setContinuousMaxGb] = useState(config.continuous_max_storage_gb ?? 15)
   const [postBuffer, setPostBuffer] = useState(config.post_buffer_seconds ?? 15)
   const [recordOn, setRecordOn] = useState(config.record_on_verdict ?? 'BOTH')
   const [continuousEnabled, setContinuousEnabled] = useState(config.continuous_recording_enabled ?? false)
@@ -698,6 +717,23 @@ function RecordingTab({ config, onSave, saving }) {
           <option value="ALL">ALL (Merekam semua segmen, termasuk NORMAL)</option>
         </select>
       </SettingRow>
+      <div style={{ margin: '20px 0 16px', borderTop: '1px solid var(--border-color)' }} />
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+        Disk Protection & Storage Limits
+      </div>
+      <SettingRow label="Max Disk Usage Limit" hint="Pembersihan otomatis (FIFO): jika penggunaan kapasitas disk mencapai batas ini, rekaman continuous tertua akan otomatis dihapus bertahap agar disk tidak 100% penuh">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="number" className="form-input" value={maxDiskUsage} onChange={e => setMaxDiskUsage(Number(e.target.value))} min={50} max={95} style={{ width: 80 }} />
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>%</span>
+        </div>
+      </SettingRow>
+      <SettingRow label="Max Continuous Storage Quota" hint="Batas kuota penyimpanan maksimum khusus untuk folder continuous recording (0 = tidak terbatas, hanya mengikuti batas Max Disk Usage)">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="number" className="form-input" value={continuousMaxGb} onChange={e => setContinuousMaxGb(Number(e.target.value))} min={0} max={1000} style={{ width: 80 }} />
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GB</span>
+        </div>
+      </SettingRow>
+
       <div style={{ paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
         <SaveBtn saving={saving} onClick={() => onSave({
           pre_buffer_seconds: preBuffer,
@@ -707,6 +743,8 @@ function RecordingTab({ config, onSave, saving }) {
           continuous_chunk_minutes: continuousMinutes,
           recording_format: recordingFormat,
           alert_recording_mode: alertRecordingMode,
+          max_disk_usage_percent: maxDiskUsage,
+          continuous_max_storage_gb: continuousMaxGb,
         })} />
       </div>
     </div>
@@ -953,7 +991,7 @@ function NotificationsTab({ config, onSave, saving }) {
   )
 }
 
-function PromptTab({ prompt, setPrompt, promptBase, setPromptBase, onSave, saving, config }) {
+function PromptTab({ prompt, setPrompt, promptBase, setPromptBase, onSave, saving, config, isAdmin = true }) {
   const [categories, setCategories] = useState([]);
   const [localBase, setLocalBase] = useState('');
   
@@ -1009,7 +1047,7 @@ Keterangan:
   };
 
   const handleSaveAll = () => {
-    onSave(localBase, categories);
+    onSave(isAdmin ? localBase : null, categories);
   };
 
   const handleResetLocal = () => {
@@ -1077,46 +1115,52 @@ Keterangan:
       {/* Dynamic Form Layout */}
       <div style={{ display: 'flex', flexDirection: 'row', gap: 24, flexWrap: 'wrap', alignItems: 'stretch' }}>
         
-        {/* Left Column: Base System Instructions & Live Preview */}
-        <div style={{ flex: '1 1 500px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <h3 style={{ marginBottom: 4 }}>Base System Instructions</h3>
-              <div className="form-hint">Set role, compliance guidelines, objective reasoning, and other rules. Avoid hardcoding categories here.</div>
-            </div>
-            <textarea
-              className="form-textarea"
-              value={localBase}
-              onChange={e => setLocalBase(e.target.value)}
-              style={{ flex: 1, minHeight: 250, fontSize: 12, lineHeight: 1.6 }}
-            />
-          </div>
-
-          <div className="card">
-            <div 
-              onClick={() => setShowPreview(!showPreview)} 
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', color: 'var(--accent)', fontWeight: 500, fontSize: 13 }}
-            >
-              <span>Live Compiled Prompt Preview</span>
-              <span>{showPreview ? '▲' : '▼'}</span>
-            </div>
-            {showPreview && (
+        {/* Left Column: Base System Instructions & Live Preview (Admin Only) */}
+        {isAdmin && (
+          <div style={{ flex: '1 1 500px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <h3 style={{ marginBottom: 4 }}>Base System Instructions</h3>
+                <div className="form-hint">Set role, compliance guidelines, objective reasoning, and other rules. Avoid hardcoding categories here.</div>
+              </div>
               <textarea
                 className="form-textarea"
-                value={liveCompiled}
-                readOnly
-                style={{ height: 280, fontSize: 11, lineHeight: 1.5, background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginTop: 12 }}
+                value={localBase}
+                onChange={e => setLocalBase(e.target.value)}
+                style={{ flex: 1, minHeight: 250, fontSize: 12, lineHeight: 1.6 }}
               />
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* Right Column: Categories Manager */}
-        <div style={{ flex: '1 1 500px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card">
+              <div 
+                onClick={() => setShowPreview(!showPreview)} 
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', color: 'var(--accent)', fontWeight: 500, fontSize: 13 }}
+              >
+                <span>Live Compiled Prompt Preview</span>
+                <span>{showPreview ? '▲' : '▼'}</span>
+              </div>
+              {showPreview && (
+                <textarea
+                  className="form-textarea"
+                  value={liveCompiled}
+                  readOnly
+                  style={{ height: 280, fontSize: 11, lineHeight: 1.5, background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginTop: 12 }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Categories Manager Column */}
+        <div style={{ flex: isAdmin ? '1 1 500px' : '1 1 100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div style={{ marginBottom: 16 }}>
-              <h3 style={{ marginBottom: 4 }}>Fraud & Suspicious Categories</h3>
-              <div className="form-hint">Define behavior flags the LLM will output. Verdict mappings dynamically adjust alert severity.</div>
+              <h3 style={{ marginBottom: 4 }}>{isAdmin ? 'Fraud & Suspicious Categories' : 'Aturan & Kategori Deteksi Pelanggaran'}</h3>
+              <div className="form-hint">
+                {isAdmin 
+                  ? 'Define behavior flags the LLM will output. Verdict mappings dynamically adjust alert severity.' 
+                  : 'Daftar aturan deteksi pelanggaran. Anda dapat menambah, mengedit, atau menghapus kriteria indikator di bawah ini.'}
+              </div>
             </div>
 
             {/* Scrollable Categories List */}
@@ -1210,7 +1254,7 @@ Keterangan:
               })}
               {categories.length === 0 && (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                  No categories defined. LLM will not run fraud flag analysis.
+                  No categories defined. Sistem tidak akan mendeteksi pelanggaran khusus.
                 </div>
               )}
             </div>

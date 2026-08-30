@@ -168,4 +168,8 @@ async def change_password(
 
 @router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user)):
-    return {"username": current_user.username, "id": current_user.id}
+    return {
+        "username": current_user.username,
+        "id": current_user.id,
+        "role": getattr(current_user, "role", "admin") or "admin"
+    }

@@ -42,7 +42,7 @@ class PromptPatch(BaseModel):
 
 @router.get("")
 async def get_config(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Return all runtime config (merged with defaults)."""
     cfg = runtime_config.get_all()
@@ -50,6 +50,20 @@ async def get_config(
     for key in ("mqtt_password", "audio_upload_api_key", "snapshot_upload_api_key", "groq_api_key"):
         if cfg.get(key):
             cfg[key] = "***"
+
+    is_admin = getattr(current_user, "role", "admin") == "admin" and current_user.username != "user"
+    if not is_admin:
+        # Hide LLM/STT models and AI internals completely from standard user
+        hidden_keys = [
+            "groq_api_key", "groq_stt_model", "groq_llm_model",
+            "local_llm_url", "local_llm_model", "local_llm_endpoint_type",
+            "local_whisper_model", "local_whisper_device", "local_whisper_compute_type",
+            "stt_mode", "llm_mode", "system_prompt_base", "system_prompt",
+            "mqtt_username", "mqtt_password", "audio_upload_api_key", "snapshot_upload_api_key",
+            "audio_upload_url", "snapshot_upload_url"
+        ]
+        for hk in hidden_keys:
+            cfg.pop(hk, None)
     return cfg
 
 
@@ -57,13 +71,26 @@ async def get_config(
 async def patch_config(
     body: ConfigPatch,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Update runtime config keys. Persists to DB and updates in-memory cache."""
     raw_updates = dict(body.updates)
     updates = {k: v for k, v in raw_updates.items() if v != "***"}
     if not updates:
         return {"message": "No changes to save"}
+
+    is_admin = getattr(current_user, "role", "admin") == "admin" and current_user.username != "user"
+    if not is_admin:
+        forbidden = {
+            "groq_api_key", "groq_stt_model", "groq_llm_model",
+            "local_llm_url", "local_llm_model", "local_llm_endpoint_type",
+            "local_whisper_model", "local_whisper_device", "local_whisper_compute_type",
+            "stt_mode", "llm_mode", "system_prompt_base", "system_prompt",
+            "mqtt_broker_host", "mqtt_broker_port", "mqtt_username", "mqtt_password"
+        }
+        updates = {k: v for k, v in updates.items() if k not in forbidden}
+        if not updates:
+            return {"message": "No permitted changes to save"}
 
     # If categories or prompt base are being updated, recompile the system prompt
     if "fraud_categories" in updates or "system_prompt_base" in updates:
@@ -101,8 +128,16 @@ async def patch_config(
 
 @router.get("/prompt")
 async def get_prompt(
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    is_admin = getattr(current_user, "role", "admin") == "admin" and current_user.username != "user"
+    if not is_admin:
+        return {
+            "system_prompt": "",
+            "system_prompt_base": "",
+            "fraud_categories": runtime_config.get("fraud_categories", []),
+            "alert_verdicts": runtime_config.get("alert_verdicts", []),
+        }
     return {
         "system_prompt": runtime_config.get("system_prompt", ""),
         "system_prompt_base": runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE),
@@ -115,21 +150,24 @@ async def get_prompt(
 async def update_prompt(
     body: PromptPatch,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    is_admin = getattr(current_user, "role", "admin") == "admin" and current_user.username != "user"
     current_base = runtime_config.get("system_prompt_base", _DEFAULT_SYSTEM_PROMPT_BASE)
     current_categories = runtime_config.get("fraud_categories", [])
 
     updates = {}
-    if body.system_prompt_base is not None:
+    # Only admin can update the base prompt text directly
+    if is_admin and body.system_prompt_base is not None:
         updates["system_prompt_base"] = body.system_prompt_base
         current_base = body.system_prompt_base
+
+    # Both admin and user can update fraud categories
     if body.fraud_categories is not None:
         updates["fraud_categories"] = body.fraud_categories
         current_categories = body.fraud_categories
 
-    # Check if we got an explicit full system prompt update (backwards compatibility)
-    if body.system_prompt is not None and body.system_prompt.strip():
+    if is_admin and body.system_prompt is not None and body.system_prompt.strip():
         updates["system_prompt"] = body.system_prompt
     else:
         updates["system_prompt"] = compile_system_prompt(current_base, current_categories)

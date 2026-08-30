@@ -85,19 +85,46 @@ async def lifespan(app: FastAPI):
     (Path(settings.storage_path) / "recordings").mkdir(exist_ok=True)
     (Path(settings.storage_path) / "snapshots").mkdir(exist_ok=True)
 
-    # 2. Init DB
+    # 2. Init DB & Schema Auto-Migration
     await init_db()
-
-    # 3. Seed admin user
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(User).where(User.username == settings.admin_username))
-        if result.scalar_one_or_none() is None:
+        try:
+            from sqlalchemy import text
+            await db.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(32) DEFAULT 'admin'"))
+            await db.commit()
+            logger.info("[Startup] Added 'role' column to users table")
+        except Exception:
+            pass
+
+    # 3. Seed Users (admin & user)
+    async with AsyncSessionLocal() as db:
+        # Admin User
+        res_admin = await db.execute(select(User).where(User.username == settings.admin_username))
+        admin_user = res_admin.scalar_one_or_none()
+        if admin_user is None:
             db.add(User(
                 username=settings.admin_username,
                 hashed_password=hash_password(settings.admin_password),
+                role="admin",
             ))
             await db.commit()
             logger.info(f"[Startup] Admin user '{settings.admin_username}' created")
+        elif getattr(admin_user, "role", None) != "admin":
+            admin_user.role = "admin"
+            await db.commit()
+
+        # Standard User
+        user_name = getattr(settings, "user_username", "user")
+        user_pass = getattr(settings, "user_password", "user123")
+        res_user = await db.execute(select(User).where(User.username == user_name))
+        if res_user.scalar_one_or_none() is None:
+            db.add(User(
+                username=user_name,
+                hashed_password=hash_password(user_pass),
+                role="user",
+            ))
+            await db.commit()
+            logger.info(f"[Startup] Standard user '{user_name}' created with role 'user'")
 
     # 4. Load runtime config from DB
     async with AsyncSessionLocal() as db:
@@ -177,10 +204,13 @@ async def lifespan(app: FastAPI):
     _scheduler.add_job(
         lambda: asyncio.get_event_loop().run_in_executor(None, retention.run_cleanup),
         trigger="interval",
-        hours=6,
+        hours=1,
         id="retention_cleanup",
     )
     _scheduler.start()
+
+    # Run initial cleanup on startup in background
+    asyncio.get_event_loop().run_in_executor(None, retention.run_cleanup)
     logger.info("[Startup] All services started ✓")
 
     yield

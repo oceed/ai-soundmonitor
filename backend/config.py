@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
     admin_username: str = "admin"
     admin_password: str = "admin123"
+    user_username: str = "user"
+    user_password: str = "user123"
 
     # Groq
     groq_api_key: str = ""
@@ -73,8 +75,10 @@ class Settings(BaseSettings):
     continuous_chunk_minutes: int = 10
     vad_auto_calibrate: bool = True
 
-    # Retention
+    # Retention & Storage Management
     retention_days: int = 7
+    max_disk_usage_percent: float = 85.0
+    continuous_max_storage_gb: float = 15.0
 
     # Device Identification
     device_id: str = "edge-device-01"
@@ -248,6 +252,8 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "alert_verdicts": ["FRAUD", "SUSPICIOUS"],
     "device_name": "VoiceGuard-Store-01",
     "device_id": "edge-device-01",
+    "max_disk_usage_percent": 85.0,
+    "continuous_max_storage_gb": 15.0,
     # These mirror .env but can be overridden at runtime
     "stt_mode": "auto",
     "stt_language": "id",

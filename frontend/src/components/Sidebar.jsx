@@ -107,7 +107,7 @@ export function Sidebar({ pipelineRunning, wsStatus, theme, toggleTheme }) {
                 {user?.username || 'admin'}
               </span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1 }}>
-                System Op
+                {user?.role === 'user' ? 'Operator' : 'System Admin'}
               </span>
             </div>
           </div>
