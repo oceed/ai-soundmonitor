@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
-import { getAlerts, deleteAlert, getRecordingStreamUrl, getRecordingDownloadUrl } from '../api/alerts'
+import { getAlerts, deleteAlert, getRecordingStreamUrl, getRecordingDownloadUrl, getSnapshotUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 import { getConfig } from '../api/config'
+import { SnapshotModal } from '../components/SnapshotModal'
 
 const VERDICT_CFG = {
   FRAUD: { color: 'var(--fraud)', bg: 'var(--fraud-bg)', border: 'var(--fraud-border)', icon: '🚨', label: 'FRAUD' },
@@ -19,6 +20,7 @@ export function Alerts({ liveEvents }) {
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [viewingSnapshot, setViewingSnapshot] = useState(null)
   const [page, setPage] = useState(1)
   const { addToast } = useToast()
   const [categories, setCategories] = useState([])
@@ -265,6 +267,7 @@ export function Alerts({ liveEvents }) {
                   expanded={expandedId === alert.id}
                   onToggle={() => setExpandedId(prev => prev === alert.id ? null : alert.id)}
                   onDelete={handleDelete}
+                  onSnapshotClick={setViewingSnapshot}
                   categories={categories}
                 />
               ))}
@@ -301,11 +304,19 @@ export function Alerts({ liveEvents }) {
           </>
         )}
       </div>
+
+      {/* Snapshot Lightbox Modal */}
+      {viewingSnapshot && (
+        <SnapshotModal
+          item={viewingSnapshot}
+          onClose={() => setViewingSnapshot(null)}
+        />
+      )}
     </div>
   )
 }
 
-function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categories = [] }) {
+function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapshotClick, categories = [] }) {
   const cfg = VERDICT_CFG[alert.verdict] || VERDICT_CFG.SUSPICIOUS
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
@@ -360,14 +371,30 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categori
         <span style={{ fontSize: 18 }}>{cfg.icon}</span>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{alert.verdict}</span>
             {alert.flags?.slice(0, 2).map(f => renderBadge(f, true))}
             {alert.recording_ready && (
               <span className="badge badge-info" style={{ fontSize: 9 }}>🔊 REC</span>
             )}
             {alert.snapshot_path && (
-              <span className="badge badge-accent" style={{ fontSize: 9, background: 'rgba(99,102,241,0.2)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.4)' }}>📷 SNAPSHOT</span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSnapshotClick?.({ ...alert, counterName });
+                }}
+                className="badge badge-accent"
+                style={{
+                  fontSize: 9,
+                  background: 'rgba(255,122,0,0.15)',
+                  color: 'var(--accent-light)',
+                  border: '1px solid rgba(255,122,0,0.35)',
+                  cursor: 'pointer',
+                }}
+                title="Click to view full snapshot image"
+              >
+                📷 SNAPSHOT
+              </span>
             )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -398,13 +425,49 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, categori
               <div className="form-label" style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>📷 Camera Snapshot Evidence</span>
               </div>
-              <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', maxWidth: 480 }}>
-                <img
-                  src={alert.snapshot_path.startsWith('http') ? alert.snapshot_path : `http://${window.location.hostname}:8013/${alert.snapshot_path.replace(/^\//, '')}`}
-                  alt="Camera Snapshot"
-                  style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 320, objectFit: 'cover' }}
-                  onError={(e) => { e.target.style.display = 'none' }}
-                />
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSnapshotClick?.({ ...alert, counterName });
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 14px 8px 8px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  transition: 'all var(--t-fast)',
+                }}
+                title="Click to expand high-resolution snapshot"
+              >
+                <div style={{
+                  width: 80,
+                  height: 54,
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                  background: '#000',
+                  border: '1px solid var(--border)',
+                  flexShrink: 0,
+                }}>
+                  <img
+                    src={getSnapshotUrl(alert.snapshot_path)}
+                    alt="Camera Snapshot"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    onError={(e) => { e.target.style.display = 'none' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>Security Camera Capture</span>
+                    <span style={{ fontSize: 10, color: 'var(--accent-light)' }}>🔍 Expand</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                    {alert.snapshot_path.split('/').pop()}
+                  </div>
+                </div>
               </div>
             </div>
           )}

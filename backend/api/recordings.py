@@ -68,6 +68,7 @@ async def get_timeline(
             "duration_s": s.audio_duration_s,
             "reason": s.reason,
             "transcript": s.transcript,
+            "snapshot_path": s.snapshot_path,
         })
 
     # Fetch continuous recordings for the day

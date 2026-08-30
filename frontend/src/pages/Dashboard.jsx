@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { AudioVisualizer } from '../components/AudioVisualizer'
+import { SnapshotModal } from '../components/SnapshotModal'
 import { format } from 'date-fns'
 import { startPipeline, stopPipeline, getSegments, getSessions, getConfig } from '../api/config'
-import { getRecordingStreamUrl } from '../api/alerts'
+import { getRecordingStreamUrl, getSnapshotUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 
 const MAX_FEED = 80
@@ -197,7 +198,7 @@ function ProcessingState({ events = [] }) {
 }
 
 /* ─── Feed item ─── */
-function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
+function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }) {
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.ERROR
   const isBad = item.verdict === 'FRAUD' || item.verdict === 'SUSPICIOUS'
 
@@ -216,7 +217,7 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
     >
       {/* Top row: verdict + meta */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
             {cfg.icon} {item.classification || item.verdict}
           </span>
@@ -234,6 +235,23 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
               </span>
             );
           })}
+          {item.snapshot_path && (
+            <span
+              onClick={(e) => { e.stopPropagation(); onSnapshotClick?.(item); }}
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(255, 122, 0, 0.14)',
+                color: 'var(--accent-light)',
+                border: '1px solid rgba(255, 122, 0, 0.3)',
+                cursor: 'pointer',
+              }}
+              title="Camera snapshot captured · Click to view full image"
+            >
+              📷 SNAPSHOT
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {item.stt_ms > 0 && (
@@ -254,7 +272,7 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
               onClick={(e) => { e.stopPropagation(); onPlayClick(item) }}
               style={{
                 background: 'var(--accent-glow)',
-                border: '1px solid rgba(124,106,247,0.3)',
+                border: '1px solid rgba(255,122,0,0.3)',
                 borderRadius: 4,
                 color: 'var(--accent-light)',
                 fontSize: 9,
@@ -278,20 +296,57 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
 
       {/* Reason */}
       {item.reason && (
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 4 }}>
           {item.reason}
         </div>
       )}
 
-      {/* Camera Snapshot Preview */}
+      {/* Compact Snapshot Preview Thumbnail Bar */}
       {item.snapshot_path && (
-        <div style={{ marginTop: 6, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', maxWidth: 360 }}>
-          <img
-            src={item.snapshot_path.startsWith('http') ? item.snapshot_path : `http://${window.location.hostname}:8013/${item.snapshot_path.replace(/^\//, '')}`}
-            alt="Snapshot"
-            style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 200, objectFit: 'cover' }}
-            onError={(e) => { e.target.style.display = 'none' }}
-          />
+        <div
+          onClick={(e) => { e.stopPropagation(); onSnapshotClick?.(item); }}
+          style={{
+            marginTop: 6,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '4px 10px 4px 5px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 7,
+            cursor: 'pointer',
+            transition: 'all var(--t-fast)',
+            maxWidth: '100%',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+          title="Click to open full-resolution camera snapshot modal"
+        >
+          <div style={{
+            width: 48,
+            height: 34,
+            borderRadius: 4,
+            overflow: 'hidden',
+            background: '#000',
+            flexShrink: 0,
+            border: '1px solid var(--border)',
+            position: 'relative',
+          }}>
+            <img
+              src={getSnapshotUrl(item.snapshot_path)}
+              alt="Snapshot"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span>📷</span> <span>Camera Evidence</span>
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--accent-light)' }}>
+              Click to view snapshot ↗
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -299,7 +354,7 @@ function FeedItem({ item, isNew, onPlayClick, categories = [] }) {
 }
 
 /* ─── Audio Playback Modal ─── */
-function PlaybackModal({ item, onClose }) {
+function PlaybackModal({ item, onClose, onSnapshotClick }) {
   if (!item) return null
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.ERROR
 
@@ -362,6 +417,34 @@ function PlaybackModal({ item, onClose }) {
               {item.reason}
             </div>
           )}
+
+          {item.snapshot_path && (
+            <div
+              onClick={() => onSnapshotClick?.(item)}
+              style={{
+                marginTop: 10,
+                padding: '6px 10px',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <img
+                src={getSnapshotUrl(item.snapshot_path)}
+                alt="Snapshot"
+                style={{ width: 44, height: 30, objectFit: 'cover', borderRadius: 4, background: '#000' }}
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>📷 Camera Snapshot Attached</div>
+                <div style={{ fontSize: 9, color: 'var(--accent-light)' }}>Click to view high-resolution image ↗</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Audio */}
@@ -404,6 +487,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
   const [activeCounterId, setActiveCounterId] = useState('all') // 'all' or specific cId
   const [countersState, setCountersState] = useState({})
   const [playingRecording, setPlayingRecording] = useState(null)
+  const [viewingSnapshot, setViewingSnapshot] = useState(null)
   const [categories, setCategories] = useState([])
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const feedRef = useRef(null)
@@ -520,6 +604,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                 llm_mode: s.llm_mode,
                 has_recording: s.has_recording,
                 alert_id: s.alert_id,
+                snapshot_path: s.snapshot_path,
               })
             })
             return newState
@@ -1122,6 +1207,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                     item={item}
                     isNew={i === 0}
                     onPlayClick={setPlayingRecording}
+                    onSnapshotClick={setViewingSnapshot}
                     categories={categories}
                   />
                 </div>
@@ -1133,7 +1219,19 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
 
       {/* ── Audio Playback Modal ── */}
       {playingRecording && (
-        <PlaybackModal item={playingRecording} onClose={() => setPlayingRecording(null)} />
+        <PlaybackModal
+          item={playingRecording}
+          onClose={() => setPlayingRecording(null)}
+          onSnapshotClick={setViewingSnapshot}
+        />
+      )}
+
+      {/* ── Camera Snapshot Lightbox Modal ── */}
+      {viewingSnapshot && (
+        <SnapshotModal
+          item={viewingSnapshot}
+          onClose={() => setViewingSnapshot(null)}
+        />
       )}
     </div>
   )

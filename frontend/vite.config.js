@@ -10,6 +10,14 @@ export default defineConfig({
         target: process.env.VITE_API_URL || 'http://localhost:8013',
         changeOrigin: true,
       },
+      '/snapshots': {
+        target: process.env.VITE_API_URL || 'http://localhost:8013',
+        changeOrigin: true,
+      },
+      '/storage': {
+        target: process.env.VITE_API_URL || 'http://localhost:8013',
+        changeOrigin: true,
+      },
       '/ws': {
         target: process.env.VITE_WS_URL || 'ws://localhost:8013',
         ws: true,

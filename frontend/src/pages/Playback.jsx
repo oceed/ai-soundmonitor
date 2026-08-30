@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, subDays, addDays } from 'date-fns'
-import { getTimeline, getRecordingStreamUrl, getRecordingDownloadUrl, getContinuousStreamUrl } from '../api/alerts'
+import { getTimeline, getRecordingStreamUrl, getRecordingDownloadUrl, getContinuousStreamUrl, getSnapshotUrl } from '../api/alerts'
 import { Timeline } from '../components/Timeline'
 import { useToast } from '../components/NotificationToast'
+import { SnapshotModal } from '../components/SnapshotModal'
 
 const VERDICT_COLOR = {
   FRAUD:      'var(--fraud)',
@@ -18,6 +19,7 @@ export function Playback() {
   const [loading, setLoading] = useState(false)
   const [selectedAlert, setSelectedAlert] = useState(null)
   const [activeContinuousRec, setActiveContinuousRec] = useState(null)
+  const [viewingSnapshot, setViewingSnapshot] = useState(null)
   const [currentPlayRatio, setCurrentPlayRatio] = useState(null)
   const [visibleCount, setVisibleCount] = useState(50)
   const audioRef = useRef(null)
@@ -246,7 +248,8 @@ export function Playback() {
                         <span style={{ fontSize: 11, fontWeight: 700, color: VERDICT_COLOR[alert.verdict] || 'var(--text-secondary)' }}>
                           {alert.verdict}
                         </span>
-                        {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }}>🔊</span>}
+                        {alert.has_recording && <span style={{ fontSize: 10, color: 'var(--clear)' }} title="Audio recording available">🔊</span>}
+                        {alert.snapshot_path && <span style={{ fontSize: 10, color: 'var(--accent-light)' }} title="Camera snapshot available">📷</span>}
                         <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginLeft: 'auto' }}>
                           {format(new Date(alert.timestamp), 'HH:mm:ss')}
                         </span>
@@ -332,6 +335,51 @@ export function Playback() {
                       {selectedAlert.reason}
                     </div>
                   )}
+
+                  {/* Camera Snapshot Preview in Playback */}
+                  {selectedAlert.snapshot_path && (
+                    <div
+                      onClick={() => setViewingSnapshot(selectedAlert)}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        transition: 'all var(--t-fast)',
+                      }}
+                      title="Click to view full snapshot evidence"
+                    >
+                      <div style={{
+                        width: 56,
+                        height: 38,
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                        background: '#000',
+                        border: '1px solid var(--border)',
+                        flexShrink: 0,
+                      }}>
+                        <img
+                          src={getSnapshotUrl(selectedAlert.snapshot_path)}
+                          alt="Snapshot"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => { e.target.style.display = 'none' }}
+                        />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>📷 Camera Evidence Captured</span>
+                          <span style={{ fontSize: 10, color: 'var(--accent-light)' }}>🔍 Expand</span>
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                          {selectedAlert.snapshot_path.split('/').pop()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -365,6 +413,14 @@ export function Playback() {
           )}
         </div>
       </div>
+
+      {/* Snapshot Lightbox Modal */}
+      {viewingSnapshot && (
+        <SnapshotModal
+          item={viewingSnapshot}
+          onClose={() => setViewingSnapshot(null)}
+        />
+      )}
     </div>
   )
 }

@@ -36,3 +36,16 @@ export const getContinuousStreamUrl = (recId) => {
   const base = import.meta.env.VITE_API_URL || ''
   return `${base}/api/recordings/continuous/${recId}/stream?token=${token}`
 }
+
+export const getSnapshotUrl = (snapshotPath) => {
+  if (!snapshotPath) return null
+  if (snapshotPath.startsWith('http://') || snapshotPath.startsWith('https://')) {
+    return snapshotPath
+  }
+  const clean = snapshotPath.replace(/^\/+/, '')
+  const base = import.meta.env.VITE_API_URL || ''
+  if (base) {
+    return `${base.replace(/\/+$/, '')}/${clean}`
+  }
+  return `http://${window.location.hostname}:8013/${clean}`
+}

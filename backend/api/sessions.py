@@ -100,6 +100,7 @@ async def list_segments(
                 "llm_ms": s.llm_ms,
                 "stt_mode": s.stt_mode_used,
                 "llm_mode": s.llm_mode_used,
+                "snapshot_path": s.snapshot_path,
             }
             for s in segments
         ]

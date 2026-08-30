@@ -192,4 +192,5 @@ def _alert_to_dict(a: Alert) -> dict:
         "audio_upload_sent": a.audio_upload_sent,
         "mqtt_sent": a.mqtt_sent,
         "mqtt_sent_at": a.mqtt_sent_at.replace(tzinfo=timezone.utc).isoformat() if a.mqtt_sent_at else None,
+        "snapshot_path": a.snapshot_path,
     }
