@@ -371,8 +371,20 @@ async def pipeline_status(_: User = Depends(get_current_user)):
 
 @app.get("/health")
 async def health():
+    stream_status = {}
+    for c_id, orch in _orchestrators.items():
+        if orch and orch._audio_stream_svc:
+            stream_status[c_id] = orch._audio_stream_svc.is_connected(c_id)
+        else:
+            stream_status[c_id] = False
+
     return {
         "status": "ok",
         "pipeline_running": any(o.is_running for o in _orchestrators.values()),
         "ws_clients": ws_manager.client_count,
+        "cloud_audio_stream": {
+            "enabled": bool(runtime_config.get("audio_stream_enabled", False)),
+            "cloud_url": runtime_config.get("audio_stream_cloud_url", ""),
+            "connected_counters": stream_status,
+        },
     }

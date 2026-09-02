@@ -259,6 +259,9 @@ class PipelineOrchestrator:
     @property
     def stats(self) -> Dict[str, Any]:
         with self._lock:
+            stream_connected = False
+            if self._audio_stream_svc:
+                stream_connected = self._audio_stream_svc.is_connected(self._counter_id)
             return {
                 **self._stats,
                 "session_id": self._session_id,
@@ -266,6 +269,8 @@ class PipelineOrchestrator:
                 "vad_state": self._vad_state,
                 "rms": self._current_rms,
                 "active_mic_name": self._capture.device_name if self._capture else "None",
+                "audio_stream_enabled": bool(self._rc.get("audio_stream_enabled", False)),
+                "audio_stream_connected": stream_connected,
             }
 
     # ──────────────────────────────────────────────────────
