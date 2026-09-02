@@ -667,57 +667,56 @@ class PipelineOrchestrator:
                 if filter_short and is_short_bypass:
                     logger.debug(f"[Orchestrator] Segment #{seg_no} suppressed from Cloud/MQTT (filter ON & short bypass: '{stt.text}')")
                 else:
+                    try:
+                        snapshot_unique_id = None
+                        if snapshot_path and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+                            try:
+                                storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+                                target_file = storage_base / snapshot_path.lstrip('/')
+                                if not target_file.exists():
+                                    target_file = Path(snapshot_path)
+                                if target_file.exists():
+                                    snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
+                                    logger.info(f"[Normal Event {segment_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
+                            except Exception as snap_err:
+                                logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
 
-                try:
-                    snapshot_unique_id = None
-                    if snapshot_path and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
-                        try:
-                            storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
-                            target_file = storage_base / snapshot_path.lstrip('/')
-                            if not target_file.exists():
-                                target_file = Path(snapshot_path)
-                            if target_file.exists():
-                                snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
-                                logger.info(f"[Normal Event {segment_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
-                        except Exception as snap_err:
-                            logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
+                        audio_unique_id = None
+                        record_verdict = self._rc.get("record_on_verdict", "BOTH")
+                        if record_verdict == "ALL" and self._recorder and item.get("pcm"):
+                            try:
+                                norm_rec = self._recorder.save_exact_segment(
+                                    alert_id=segment_id,
+                                    verdict="NORMAL",
+                                    segment_timestamp=timestamp,
+                                    pcm=item.get("pcm")
+                                )
+                                if norm_rec and self._rc.get("audio_upload_enabled", False) and self._audio_uploader:
+                                    audio_unique_id = self._audio_uploader.upload(norm_rec["path"])
+                                    logger.info(f"[Normal Event {segment_id}] Audio uploaded, audio_id={audio_unique_id}")
+                            except Exception as aud_err:
+                                logger.error(f"[Normal Event {segment_id}] Audio recording/upload error: {aud_err}")
 
-                    audio_unique_id = None
-                    record_verdict = self._rc.get("record_on_verdict", "BOTH")
-                    if record_verdict == "ALL" and self._recorder and item.get("pcm"):
-                        try:
-                            norm_rec = self._recorder.save_exact_segment(
-                                alert_id=segment_id,
-                                verdict="NORMAL",
-                                segment_timestamp=timestamp,
-                                pcm=item.get("pcm")
-                            )
-                            if norm_rec and self._rc.get("audio_upload_enabled", False) and self._audio_uploader:
-                                audio_unique_id = self._audio_uploader.upload(norm_rec["path"])
-                                logger.info(f"[Normal Event {segment_id}] Audio uploaded, audio_id={audio_unique_id}")
-                        except Exception as aud_err:
-                            logger.error(f"[Normal Event {segment_id}] Audio recording/upload error: {aud_err}")
-
-                    normal_payload = {
-                        "segment_id": segment_id,
-                        "session_id": self._session_id,
-                        "audio_id": audio_unique_id or "",
-                        "snapshot_id": snapshot_unique_id or "",
-                        "verdict": fraud_result.verdict,
-                        "classification": classification,
-                        "confidence": fraud_result.confidence,
-                        "transcript": stt.text,
-                        "reason": fraud_result.reason,
-                        "snapshot_path": snapshot_path or "",
-                        "timestamp": timestamp.isoformat(),
-                        "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
-                        "device_name": self._rc.get("device_name", ""),
-                        "counter_id": self._counter_id,
-                    }
-                    self._mqtt.publish_normal(normal_payload)
-                    logger.info(f"[Normal Event {segment_id}] Published to MQTT/Cloud")
-                except Exception as ne_err:
-                    logger.error(f"[Normal Event {segment_id}] MQTT publish failed: {ne_err}")
+                        normal_payload = {
+                            "segment_id": segment_id,
+                            "session_id": self._session_id,
+                            "audio_id": audio_unique_id or "",
+                            "snapshot_id": snapshot_unique_id or "",
+                            "verdict": fraud_result.verdict,
+                            "classification": classification,
+                            "confidence": fraud_result.confidence,
+                            "transcript": stt.text,
+                            "reason": fraud_result.reason,
+                            "snapshot_path": snapshot_path or "",
+                            "timestamp": timestamp.isoformat(),
+                            "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
+                            "device_name": self._rc.get("device_name", ""),
+                            "counter_id": self._counter_id,
+                        }
+                        self._mqtt.publish_normal(normal_payload)
+                        logger.info(f"[Normal Event {segment_id}] Published to MQTT/Cloud")
+                    except Exception as ne_err:
+                        logger.error(f"[Normal Event {segment_id}] MQTT publish failed: {ne_err}")
 
             # Handle alert or record segment
             record_verdict = self._rc.get("record_on_verdict", "BOTH")
