@@ -1049,7 +1049,7 @@ function NotificationsTab({ config, onSave, saving }) {
             <div className="form-hint" style={{ marginTop: 8, fontSize: 11 }}>
               <strong>Format Cloud Endpoint untuk Developer:</strong><br />
               <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-                /ws/audio-ingest/{'{'}{'{'}device_id{'}'}{'}}'}/{'{'}{'{'}counter_id{'}'}{'}}''}?token={'{'}{'{'}device_token{'}}{'}'}
+                {'/ws/audio-ingest/{{device_id}}/{{counter_id}}?token={{device_token}}'}
               </code>
             </div>
           </>
