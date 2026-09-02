@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import queue
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -24,6 +25,40 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _is_trivial_or_repetitive_greeting(text: str) -> bool:
+    """
+    Checks if transcript is just short trivial fragments or repetitive closing greetings/hallucinations
+    (e.g., 'terima kasih. terima kasih', 'Terima kasih. Selamat Menikmati', 'terima kasih banyak').
+    """
+    text_clean = text.strip().lower()
+    words = text_clean.split()
+    
+    # 1. Standard short check: <= 3 words or < 15 characters
+    if len(text_clean) < 15 or len(words) <= 3:
+        return True
+        
+    # 2. Check for repetitive / pure closing greetings
+    greetings = [
+        "terima kasih", "terimakasih", "selamat menikmati", "selamat datang",
+        "sama sama", "sama-sama", "terima kasih banyak", "terimakasih banyak",
+        "selamat siang", "selamat pagi", "selamat sore", "selamat malam",
+        "sampai jumpa", "berkah selalu", "hati hati di jalan"
+    ]
+    
+    cleaned_text = text_clean
+    for g in greetings:
+        cleaned_text = cleaned_text.replace(g, "")
+    
+    remaining_words = re.findall(r'\b\w+\b', cleaned_text)
+    
+    # If after removing all greetings, less than 2 substantive words remain,
+    # AND total words <= 8, it is a pure repetitive greeting!
+    if len(remaining_words) < 2 and len(words) <= 8:
+        return True
+        
+    return False
 
 # ─────────────────────────────────────────────────────────
 # Orchestrator
@@ -518,17 +553,15 @@ class PipelineOrchestrator:
                 cls = cat.get("classification", default_cls).upper()
                 mapping[key] = cls
 
-            # API Cost Optimization: bypass LLM for short/trivial transcripts (<= 3 words)
-            text_cleaned = stt.text.strip().lower()
-            words = text_cleaned.split()
-            if len(text_cleaned) < 15 or len(words) <= 3:
-                logger.debug(f"[LLM #{seg_no}] Transcript too short ({len(words)} words, '{stt.text}'), bypassing LLM")
+            # API Cost Optimization: bypass LLM for short/trivial transcripts & repetitive greetings
+            if _is_trivial_or_repetitive_greeting(stt.text):
+                logger.debug(f"[LLM #{seg_no}] Transcript trivial or repetitive greeting ('{stt.text}'), bypassing LLM")
                 from pipeline.llm import FraudResult
                 fraud_result = FraudResult(
                     raw={
                         "fraud_flags": {k: False for k in mapping.keys()},
                         "evidence": [],
-                        "reason": "Fragment too brief to evaluate."
+                        "reason": "Fragment too brief or repetitive greeting to evaluate."
                     },
                     mode_used="local_bypass",
                     elapsed_ms=0,
