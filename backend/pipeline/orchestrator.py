@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 def _is_trivial_or_repetitive_greeting(text: str) -> bool:
     """
-    Checks if transcript is just short trivial fragments or repetitive closing greetings/hallucinations
-    (e.g., 'terima kasih. terima kasih', 'Terima kasih. Selamat Menikmati', 'terima kasih banyak').
+    Checks if transcript is just short trivial fragments, STT single-letter noise,
+    or repetitive closing greetings/hallucinations (e.g., 'B, J, J Terima kasih.', 'terima kasih. terima kasih').
     """
     text_clean = text.strip().lower()
     words = text_clean.split()
@@ -39,7 +39,7 @@ def _is_trivial_or_repetitive_greeting(text: str) -> bool:
     if len(text_clean) < 15 or len(words) <= 3:
         return True
         
-    # 2. Check for repetitive / pure closing greetings
+    # 2. Check for repetitive / pure closing greetings & noise
     greetings = [
         "terima kasih", "terimakasih", "selamat menikmati", "selamat datang",
         "sama sama", "sama-sama", "terima kasih banyak", "terimakasih banyak",
@@ -51,11 +51,14 @@ def _is_trivial_or_repetitive_greeting(text: str) -> bool:
     for g in greetings:
         cleaned_text = cleaned_text.replace(g, "")
     
-    remaining_words = re.findall(r'\b\w+\b', cleaned_text)
+    # Extract remaining words, filtering out single-letter STT noise artifacts (e.g. 'b', 'j', 'x') & filler sounds
+    fillers = {"ee", "eh", "uh", "um", "oh", "ah", "ha", "mm", "hmm", "ya", "mas", "mbak", "pak", "bu"}
+    all_remaining = re.findall(r'\b\w+\b', cleaned_text)
+    substantive_words = [w for w in all_remaining if len(w) > 1 and w not in fillers]
     
-    # If after removing all greetings, less than 2 substantive words remain,
-    # AND total words <= 8, it is a pure repetitive greeting!
-    if len(remaining_words) < 2 and len(words) <= 8:
+    # If after removing greetings and single-letter STT noise, less than 2 substantive words remain,
+    # AND total words <= 8, it is a pure repetitive greeting/noise!
+    if len(substantive_words) < 2 and len(words) <= 8:
         return True
         
     return False
