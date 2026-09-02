@@ -320,6 +320,12 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "send_normal_conversations_to_mqtt": False,
     "mqtt_normal_topic": "voiceguard/normal/events",
     "snapshot_on_normal_conversation": False,
+    # Audio Live Monitoring — stream mic audio to Cloud for real-time listening
+    "audio_stream_enabled": False,
+    "audio_stream_cloud_url": "wss://api.protectqube.ai/ws/audio-ingest",
+    "audio_stream_device_token": "",
+    # Dashboard display filter
+    "filter_short_segments_dashboard": False,
 }
 
 _DEFAULT_RUNTIME_CONFIG["system_prompt"] = compile_system_prompt(

@@ -39,6 +39,7 @@ class AudioCapture:
         ring_push_callback: Callable[[bytes, float], None],
         rms_callback: Optional[Callable[[float], None]] = None,
         vad_state_callback: Optional[Callable[[str, float], None]] = None,
+        audio_stream_callback: Optional[Callable[[bytes], None]] = None,
         device_index: int = -1,
         sample_rate: int = 16000,
         channels: int = 1,
@@ -54,6 +55,7 @@ class AudioCapture:
         self._ring_push = ring_push_callback
         self._rms_cb = rms_callback
         self._vad_state_cb = vad_state_callback
+        self._audio_stream_cb = audio_stream_callback
 
         self._device_index = device_index
         self._sample_rate = sample_rate
@@ -380,6 +382,13 @@ class AudioCapture:
 
                     # Feed ring buffer
                     self._ring_push(data, ts)
+
+                    # Side-tap: forward raw PCM to cloud audio stream (non-blocking)
+                    if self._audio_stream_cb and data:
+                        try:
+                            self._audio_stream_cb(data)
+                        except Exception:
+                            pass
 
                     rms = self._get_rms(data)
                     if self._rms_cb:

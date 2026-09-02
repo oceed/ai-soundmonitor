@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { AudioVisualizer } from '../components/AudioVisualizer'
 import { SnapshotModal } from '../components/SnapshotModal'
+import { AudioPlayer } from '../components/AudioPlayer'
 import { format } from 'date-fns'
 import { startPipeline, stopPipeline, getSegments, getSessions, getConfig } from '../api/config'
 import { getRecordingStreamUrl, getSnapshotUrl } from '../api/alerts'
@@ -984,18 +985,22 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                     <span>Segs: <strong>{c.stats.segments}</strong></span>
                     {c.stats.FRAUD > 0 && <span style={{ color: 'var(--fraud)' }}>F: {c.stats.FRAUD}</span>}
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleToggleCounter(cId) }}
-                    className={`btn ${c.running ? 'btn-danger' : 'btn-primary'}`}
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: 9,
-                      borderRadius: 4,
-                    }}
-                    disabled={pipelineLoading}
-                  >
-                    {c.running ? '⏹ Stop' : '▶ Start'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                    {/* Compact listen button */}
+                    <AudioPlayer counterId={cId} isRunning={c.running} compact />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleCounter(cId) }}
+                      className={`btn ${c.running ? 'btn-danger' : 'btn-primary'}`}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: 9,
+                        borderRadius: 4,
+                      }}
+                      disabled={pipelineLoading}
+                    >
+                      {c.running ? '⏹ Stop' : '▶ Start'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )
@@ -1095,6 +1100,11 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
               verdict={focusedCounter ? focusedCounter.lastVerdict : null}
             />
           </div>
+
+          {/* Audio Live Monitor — full player when a specific running counter is selected */}
+          {focusedCounter && focusedCounter.running && (
+            <AudioPlayer counterId={focusedCounter.id} isRunning={focusedCounter.running} />
+          )}
 
           {/* Verdict distribution */}
           <VerdictDistribution stats={stats} />

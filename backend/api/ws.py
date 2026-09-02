@@ -66,6 +66,62 @@ ws_manager = ConnectionManager()
 
 
 # ─────────────────────────────────────────────────────────
+# Audio Listener Manager — relays live PCM to browser listeners
+# ─────────────────────────────────────────────────────────
+
+class AudioListenerManager:
+    """
+    Manages browser WebSocket listeners per counter_id.
+    The orchestrator's AudioCapture pushes PCM chunks directly
+    into this manager via push_chunk(); they are relayed to all
+    connected browser WebSocket clients in real-time.
+    """
+
+    def __init__(self):
+        self._listeners: dict[str, set] = {}   # counter_id → set of WebSocket
+        self._lock = asyncio.Lock()
+
+    async def add(self, counter_id: str, ws: WebSocket) -> None:
+        async with self._lock:
+            if counter_id not in self._listeners:
+                self._listeners[counter_id] = set()
+            self._listeners[counter_id].add(ws)
+        logger.debug(f"[AudioListener] +1 listener for '{counter_id}'. Total: {len(self._listeners.get(counter_id, set()))}")
+
+    async def remove(self, counter_id: str, ws: WebSocket) -> None:
+        async with self._lock:
+            listeners = self._listeners.get(counter_id, set())
+            listeners.discard(ws)
+            if not listeners:
+                self._listeners.pop(counter_id, None)
+        logger.debug(f"[AudioListener] -1 listener for '{counter_id}'")
+
+    def has_listeners(self, counter_id: str) -> bool:
+        return bool(self._listeners.get(counter_id))
+
+    async def broadcast_chunk(self, counter_id: str, pcm: bytes) -> None:
+        """Called from the pipeline (sync thread) via asyncio.run_coroutine_threadsafe."""
+        async with self._lock:
+            listeners = set(self._listeners.get(counter_id, set()))
+        if not listeners:
+            return
+        dead = set()
+        for ws in listeners:
+            try:
+                await ws.send_bytes(pcm)
+            except Exception:
+                dead.add(ws)
+        if dead:
+            async with self._lock:
+                for ws in dead:
+                    self._listeners.get(counter_id, set()).discard(ws)
+
+
+# Singletons
+audio_listener_manager = AudioListenerManager()
+
+
+# ─────────────────────────────────────────────────────────
 # Endpoint
 # ─────────────────────────────────────────────────────────
 
@@ -117,6 +173,61 @@ async def websocket_endpoint(
 
     finally:
         await ws_manager.disconnect(websocket)
+
+
+# ─────────────────────────────────────────────────────────
+# Audio Listen Endpoint — relay local mic PCM to browser
+# ─────────────────────────────────────────────────────────
+
+@router.websocket("/ws/audio-listen/{counter_id}")
+async def audio_listen_endpoint(
+    websocket: WebSocket,
+    counter_id: str,
+    token: str = Query(..., description="JWT access token"),
+):
+    """
+    Browser connects here to receive live PCM audio from a counter microphone.
+
+    Binary frames: raw PCM 16kHz 16-bit signed integer mono (same as pipeline format).
+    Decode client-side via Web Audio API (Int16Array → Float32 → AudioBuffer).
+
+    Flow:
+      AudioCapture._on_audio_chunk()
+        → orchestrator._on_audio_chunk()
+          → audio_listener_manager.broadcast_chunk()   ← injected from orchestrator
+            → this WebSocket → browser AudioContext
+    """
+    # Validate JWT
+    async with AsyncSessionLocal() as db:
+        user = await validate_ws_token(token, db)
+
+    if user is None:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    await audio_listener_manager.add(counter_id, websocket)
+    logger.info(f"[AudioListen] Browser connected to counter '{counter_id}' (user: {user.username})")
+
+    try:
+        # Keep the WS alive; client sends nothing, just receives binary PCM
+        while True:
+            try:
+                # Heartbeat: wait for any text (ping) from client; timeout = keepalive
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except Exception:
+                    pass
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "heartbeat"})
+            except (WebSocketDisconnect, Exception):
+                break
+    finally:
+        await audio_listener_manager.remove(counter_id, websocket)
+        logger.info(f"[AudioListen] Browser disconnected from counter '{counter_id}'")
 
 
 # ─────────────────────────────────────────────────────────

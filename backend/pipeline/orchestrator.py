@@ -66,6 +66,7 @@ class PipelineOrchestrator:
         self._audio_uploader = None
         self._snapshot_uploader = None
         self._camera_service = None
+        self._audio_stream_svc = None
 
         # Worker threads
         self._stt_thread: Optional[threading.Thread] = None
@@ -108,6 +109,7 @@ class PipelineOrchestrator:
         self._init_audio_uploader()
         self._init_snapshot_uploader()
         self._init_camera_service()
+        self._init_audio_stream()
 
         # Create DB session
         self._session_id = self._db.create_session(
@@ -156,6 +158,10 @@ class PipelineOrchestrator:
 
         if self._capture:
             self._capture.stop()
+
+        # Stop audio stream
+        if self._audio_stream_svc:
+            self._audio_stream_svc.stop_counter(self._counter_id)
 
         # Stop continuous recording file
         if self._recorder:
@@ -219,6 +225,7 @@ class PipelineOrchestrator:
             self._init_audio_uploader()
             self._init_snapshot_uploader()
             self._init_camera_service()
+            self._init_audio_stream()
 
             # 2. Update Recorder dynamically
             if self._recorder:
@@ -321,6 +328,7 @@ class PipelineOrchestrator:
             ring_push_callback=self._on_ring_push,
             rms_callback=self._on_rms,
             vad_state_callback=self._on_vad_state,
+            audio_stream_callback=self._on_audio_chunk,
             device_index=self._override_device_index if self._override_device_index is not None else rc.get("audio_device_index", s.audio_device_index),
             sample_rate=rc.get("sample_rate", s.sample_rate),
             channels=rc.get("channels", s.channels),
@@ -373,6 +381,19 @@ class PipelineOrchestrator:
         except Exception as e:
             logger.error(f"[Orchestrator] Camera service init failed: {e}")
 
+    def _init_audio_stream(self) -> None:
+        """Initialize or reload the AudioStreamService for this counter."""
+        if not self._rc.get("audio_stream_enabled", False):
+            return
+        try:
+            from services.audio_stream_service import AudioStreamService
+            if self._audio_stream_svc is None:
+                self._audio_stream_svc = AudioStreamService(self._rc)
+            self._audio_stream_svc.start([self._counter_id])
+            logger.info(f"[Orchestrator] AudioStreamService started for counter '{self._counter_id}'")
+        except Exception as e:
+            logger.error(f"[Orchestrator] AudioStreamService init failed: {e}")
+
     # ──────────────────────────────────────────────────────
     # Callbacks from AudioCapture
     # ──────────────────────────────────────────────────────
@@ -380,6 +401,23 @@ class PipelineOrchestrator:
     def _on_ring_push(self, chunk: bytes, ts: float) -> None:
         if self._recorder:
             self._recorder.push_chunk(chunk, ts)
+
+    def _on_audio_chunk(self, chunk: bytes) -> None:
+        """Side-tap callback: forward raw PCM to cloud streaming AND local WS listeners."""
+        # 1. Cloud audio stream service (outbound to cloud for remote dashboard)
+        if self._audio_stream_svc:
+            self._audio_stream_svc.push_chunk(self._counter_id, chunk)
+
+        # 2. Local browser listeners (dashboard running on the same device)
+        if self._loop and self._loop.is_running():
+            try:
+                from api.ws import audio_listener_manager
+                asyncio.run_coroutine_threadsafe(
+                    audio_listener_manager.broadcast_chunk(self._counter_id, chunk),
+                    self._loop,
+                )
+            except Exception:
+                pass
 
     def _on_rms(self, rms: float) -> None:
         with self._lock:
@@ -559,25 +597,30 @@ class PipelineOrchestrator:
                 snapshot_path=snapshot_path,
             )
 
-            # Broadcast result
-            self._emit("segment_result", {
-                "segment_no": seg_no,
-                "segment_id": segment_id,
-                "transcript": stt.text,
-                "verdict": fraud_result.verdict,
-                "classification": classification,
-                "confidence": fraud_result.confidence,
-                "risk_level": fraud_result.risk_level,
-                "reason": fraud_result.reason,
-                "flags": fraud_result.active_flags,
-                "evidence": fraud_result.evidence,
-                "stt_ms": stt.elapsed_ms,
-                "llm_ms": fraud_result.elapsed_ms,
-                "stt_mode": stt.mode_used,
-                "llm_mode": fraud_result.mode_used,
-                "timestamp": timestamp.isoformat(),
-                "snapshot_path": snapshot_path,
-            })
+            # Broadcast result to dashboard (optionally filter out short/trivial bypassed segments)
+            is_short_bypass = fraud_result.mode_used == "local_bypass"
+            filter_short = bool(self._rc.get("filter_short_segments_dashboard", False))
+            if not (filter_short and is_short_bypass):
+                self._emit("segment_result", {
+                    "segment_no": seg_no,
+                    "segment_id": segment_id,
+                    "transcript": stt.text,
+                    "verdict": fraud_result.verdict,
+                    "classification": classification,
+                    "confidence": fraud_result.confidence,
+                    "risk_level": fraud_result.risk_level,
+                    "reason": fraud_result.reason,
+                    "flags": fraud_result.active_flags,
+                    "evidence": fraud_result.evidence,
+                    "stt_ms": stt.elapsed_ms,
+                    "llm_ms": fraud_result.elapsed_ms,
+                    "stt_mode": stt.mode_used,
+                    "llm_mode": fraud_result.mode_used,
+                    "timestamp": timestamp.isoformat(),
+                    "snapshot_path": snapshot_path,
+                })
+            else:
+                logger.debug(f"[Orchestrator] Segment #{seg_no} filtered from dashboard (short bypass: '{stt.text}')")
 
             # Normal Conversation Dispatch to MQTT/Cloud
             send_normal_mqtt = bool(self._rc.get("send_normal_conversations_to_mqtt", False))

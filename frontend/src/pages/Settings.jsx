@@ -785,6 +785,14 @@ function NotificationsTab({ config, onSave, saving }) {
   const [cameraVerdicts, setCameraVerdicts] = useState(config.camera_snapshot_on_verdicts ?? ['FRAUD', 'SUSPICIOUS'])
   const [snapOnNormal, setSnapOnNormal] = useState(config.snapshot_on_normal_conversation ?? false)
 
+  // Audio Live Monitoring (stream mic to cloud)
+  const [audioStreamEnabled, setAudioStreamEnabled] = useState(config.audio_stream_enabled ?? false)
+  const [audioStreamUrl, setAudioStreamUrl] = useState(config.audio_stream_cloud_url ?? 'wss://api.protectqube.ai/ws/audio-ingest')
+  const [audioStreamToken, setAudioStreamToken] = useState('')
+
+  // Dashboard display filter
+  const [filterShortSegments, setFilterShortSegments] = useState(config.filter_short_segments_dashboard ?? false)
+
   const toggleVerdict = (verdict) => {
     setCameraVerdicts(prev =>
       prev.includes(verdict) ? prev.filter(v => v !== verdict) : [...prev, verdict]
@@ -819,15 +827,35 @@ function NotificationsTab({ config, onSave, saving }) {
       camera_snapshot_timeout: cameraTimeout,
       camera_snapshot_on_verdicts: cameraVerdicts,
       snapshot_on_normal_conversation: snapOnNormal,
+      // Audio Live Monitoring
+      audio_stream_enabled: audioStreamEnabled,
+      audio_stream_cloud_url: audioStreamUrl,
+      // Dashboard filter
+      filter_short_segments_dashboard: filterShortSegments,
     }
     if (mqttPass) updates.mqtt_password = mqttPass
     if (audioUploadKey) updates.audio_upload_api_key = audioUploadKey
     if (snapshotUploadKey) updates.snapshot_upload_api_key = snapshotUploadKey
+    if (audioStreamToken) updates.audio_stream_device_token = audioStreamToken
     onSave(updates)
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 840 }}>
+      {/* Dashboard Display Filter */}
+      <div className="card" style={{ padding: '14px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Dashboard Display Filter</h3
+            <div className="form-hint">
+              Sembunyikan segmen yang terlalu pendek (kurang dari 3 kata / 15 karakter) dari live feed dashboard.
+              Segmen tetap disimpan ke database, hanya tidak ditampilkan di UI.
+            </div>
+          </div>
+          <Toggle checked={filterShortSegments} onChange={setFilterShortSegments} />
+        </div>
+      </div>
+
       {/* MQTT Integration */}
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -979,6 +1007,52 @@ function NotificationsTab({ config, onSave, saving }) {
                   </SettingRow>
                 </>
               )}
+            </div>
+          </>
+        )}
+      </div>
+
+      </div>
+
+      {/* Audio Live Monitoring */}
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div>
+            <h3 style={{ margin: 0 }}>🎙 Audio Live Monitoring</h3>
+            <div className="form-hint">
+              Stream counter microphone audio ke Cloud secara real-time. Dashboard Cloud bisa mendengarkan suara mic counter langsung.
+            </div>
+          </div>
+          <Toggle checked={audioStreamEnabled} onChange={setAudioStreamEnabled} />
+        </div>
+
+        {audioStreamEnabled && (
+          <>
+            <div className="form-hint" style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(46,204,113,0.07)', borderRadius: 6, border: '1px solid rgba(46,204,113,0.2)' }}>
+              ✓ Device akan push raw PCM audio (16kHz mono) ke Cloud WebSocket saat pipeline aktif. Cloud me-relay ke browser listener secara on-demand.
+            </div>
+            <SettingRow label="Cloud WebSocket URL" hint="Endpoint cloud yang menerima audio stream dari device (format: wss://...)">
+              <input
+                className="form-input"
+                value={audioStreamUrl}
+                onChange={e => setAudioStreamUrl(e.target.value)}
+                placeholder="wss://api.protectqube.ai/ws/audio-ingest"
+              />
+            </SettingRow>
+            <SettingRow label="Device Token" hint="Token autentikasi device ke cloud. Biarkan kosong untuk mempertahankan token yang sudah tersimpan.">
+              <input
+                type="password"
+                className="form-input"
+                value={audioStreamToken}
+                onChange={e => setAudioStreamToken(e.target.value)}
+                placeholder="Leave blank to keep existing token"
+              />
+            </SettingRow>
+            <div className="form-hint" style={{ marginTop: 8, fontSize: 11 }}>
+              <strong>Format Cloud Endpoint untuk Developer:</strong><br />
+              <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                /ws/audio-ingest/{'{'}{'{'}device_id{'}'}{'}}'}/{'{'}{'{'}counter_id{'}'}{'}}''}?token={'{'}{'{'}device_token{'}}{'}'}
+              </code>
             </div>
           </>
         )}
