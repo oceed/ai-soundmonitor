@@ -27,19 +27,46 @@ from typing import Any, Callable, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _deduplicate_ngrams(words: list[str]) -> list[str]:
+    """Collapse consecutive duplicate single words or 2-word n-grams caused by STT hallucinations."""
+    if not words:
+        return []
+    # Pass 1: consecutive single word duplicates ("salah salah" -> "salah")
+    dedup1 = []
+    for w in words:
+        if not dedup1 or w != dedup1[-1]:
+            dedup1.append(w)
+    # Pass 2: consecutive 2-word n-gram duplicates ("oh salah oh salah" -> "oh salah")
+    dedup2 = []
+    i = 0
+    while i < len(dedup1):
+        if i + 3 < len(dedup1) and dedup1[i:i+2] == dedup1[i+2:i+4]:
+            dedup2.extend(dedup1[i:i+2])
+            i += 4
+            while i + 1 < len(dedup1) and dedup1[i:i+2] == dedup2[-2:]:
+                i += 2
+        else:
+            dedup2.append(dedup1[i])
+            i += 1
+    return dedup2
+
+
 def _is_trivial_or_repetitive_greeting(text: str) -> bool:
     """
     Checks if transcript is just short trivial fragments, STT single-letter noise,
-    or repetitive closing greetings/hallucinations (e.g., 'B, J, J Terima kasih.', 'terima kasih. terima kasih').
+    repeated word hallucinations (e.g., 'Oh salah Oh salah Oh salah'), or repetitive closing greetings.
     """
     text_clean = text.strip().lower()
-    words = text_clean.split()
+    raw_words = re.findall(r'\b\w+\b', text_clean)
     
     # 1. Standard short check: <= 3 words or < 15 characters
-    if len(text_clean) < 15 or len(words) <= 3:
+    if len(text_clean) < 15 or len(raw_words) <= 3:
         return True
         
-    # 2. Check for repetitive / pure closing greetings & noise
+    # 2. Deduplicate repeated n-grams (STT hallucination loops)
+    dedup_words = _deduplicate_ngrams(raw_words)
+    
+    # 3. Strip out greetings
     greetings = [
         "terima kasih", "terimakasih", "selamat menikmati", "selamat datang",
         "sama sama", "sama-sama", "terima kasih banyak", "terimakasih banyak",
@@ -47,18 +74,22 @@ def _is_trivial_or_repetitive_greeting(text: str) -> bool:
         "sampai jumpa", "berkah selalu", "hati hati di jalan"
     ]
     
-    cleaned_text = text_clean
+    cleaned_text = " ".join(dedup_words)
     for g in greetings:
         cleaned_text = cleaned_text.replace(g, "")
     
-    # Extract remaining words, filtering out single-letter STT noise artifacts (e.g. 'b', 'j', 'x') & filler sounds
-    fillers = {"ee", "eh", "uh", "um", "oh", "ah", "ha", "mm", "hmm", "ya", "mas", "mbak", "pak", "bu"}
-    all_remaining = re.findall(r'\b\w+\b', cleaned_text)
-    substantive_words = [w for w in all_remaining if len(w) > 1 and w not in fillers]
+    # Extract remaining substantive words (ignoring fillers, digits/numbers, and single-letter noise)
+    fillers = {"ee", "eh", "uh", "um", "oh", "ah", "ha", "mm", "hmm", "ya", "mas", "mbak", "pak", "bu", "beneran"}
+    remaining_tokens = re.findall(r'\b\w+\b', cleaned_text)
+    substantive_words = [
+        w for w in remaining_tokens
+        if len(w) > 1 and not w.isdigit() and w not in fillers
+    ]
     
-    # If after removing greetings and single-letter STT noise, less than 2 substantive words remain,
-    # AND total words <= 8, it is a pure repetitive greeting/noise!
-    if len(substantive_words) < 2 and len(words) <= 8:
+    # If after deduplication and stripping greetings/fillers/noise:
+    # less than 3 substantive words remain AND deduplicated words <= 7,
+    # then it is a trivial fragment / repetitive STT hallucination!
+    if len(substantive_words) < 3 and len(dedup_words) <= 7:
         return True
         
     return False
