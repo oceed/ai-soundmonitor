@@ -222,6 +222,21 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
           <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
             {cfg.icon} {item.classification || item.verdict}
           </span>
+          {(item.is_bypassed || item.llm_mode === 'local_bypass') && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(120, 120, 120, 0.14)',
+                color: 'var(--text-muted)',
+                border: '1px solid rgba(140, 140, 140, 0.25)',
+              }}
+              title="Short fragment / closing greeting — LLM bypassed (suppressed from Cloud/MQTT)"
+            >
+              ⚡ SHORT / BYPASS
+            </span>
+          )}
           {item.flags?.map(f => {
             const cat = categories.find(c => c.key === f);
             const label = cat?.label || f.replace(/_/g, ' ');

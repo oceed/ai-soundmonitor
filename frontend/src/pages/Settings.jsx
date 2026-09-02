@@ -846,9 +846,9 @@ function NotificationsTab({ config, onSave, saving }) {
       <div className="card" style={{ padding: '14px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h3 style={{ margin: 0 }}>Filter Segmen Pendek (Dashboard & Cloud/MQTT)</h3>
+            <h3 style={{ margin: 0 }}>Filter Segmen Pendek (Cloud/MQTT & Status Badge)</h3>
             <div className="form-hint">
-              Jika diaktifkan, segmen pendek (≤ 3 kata / &lt; 15 karakter) TIDAK diproses oleh LLM, TIDAK ditampilkan di Dashboard, dan TIDAK dikirim ke Cloud/MQTT. Segmen tetap disimpan di database lokal.
+              Jika diaktifkan, segmen pendek (≤ 3 kata / basa-basi penutup) TIDAK dikirim ke Cloud/MQTT. Di Dashboard lokal, segmen ini tetap ditampilkan dengan penanda khusus <strong style={{ color: 'var(--text-muted)' }}>⚡ SHORT / BYPASS</strong>.
             </div>
           </div>
           <Toggle checked={filterShortSegments} onChange={setFilterShortSegments} />

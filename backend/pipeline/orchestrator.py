@@ -635,35 +635,38 @@ class PipelineOrchestrator:
                 snapshot_path=snapshot_path,
             )
 
-            # Broadcast result to dashboard (optionally filter out short/trivial bypassed segments)
+            # Broadcast result to local dashboard (includes is_bypassed flag)
             is_short_bypass = fraud_result.mode_used == "local_bypass"
             filter_short = bool(self._rc.get("filter_short_segments_dashboard", False))
-            if not (filter_short and is_short_bypass):
-                self._emit("segment_result", {
-                    "segment_no": seg_no,
-                    "segment_id": segment_id,
-                    "transcript": stt.text,
-                    "verdict": fraud_result.verdict,
-                    "classification": classification,
-                    "confidence": fraud_result.confidence,
-                    "risk_level": fraud_result.risk_level,
-                    "reason": fraud_result.reason,
-                    "flags": fraud_result.active_flags,
-                    "evidence": fraud_result.evidence,
-                    "stt_ms": stt.elapsed_ms,
-                    "llm_ms": fraud_result.elapsed_ms,
-                    "stt_mode": stt.mode_used,
-                    "llm_mode": fraud_result.mode_used,
-                    "timestamp": timestamp.isoformat(),
-                    "snapshot_path": snapshot_path,
-                })
-            else:
-                logger.debug(f"[Orchestrator] Segment #{seg_no} filtered from dashboard (short bypass: '{stt.text}')")
+            
+            self._emit("segment_result", {
+                "segment_no": seg_no,
+                "segment_id": segment_id,
+                "transcript": stt.text,
+                "verdict": fraud_result.verdict,
+                "classification": classification,
+                "confidence": fraud_result.confidence,
+                "risk_level": fraud_result.risk_level,
+                "reason": fraud_result.reason,
+                "flags": fraud_result.active_flags,
+                "evidence": fraud_result.evidence,
+                "stt_ms": stt.elapsed_ms,
+                "llm_ms": fraud_result.elapsed_ms,
+                "stt_mode": stt.mode_used,
+                "llm_mode": fraud_result.mode_used,
+                "is_bypassed": is_short_bypass,
+                "filter_active": filter_short,
+                "timestamp": timestamp.isoformat(),
+                "snapshot_path": snapshot_path,
+            })
 
-            # Normal Conversation Dispatch to MQTT/Cloud (suppressed if filter_short & is_short_bypass)
+            # Normal Conversation Dispatch to MQTT/Cloud (suppressed from Cloud/MQTT only if filter_short is ON & short bypass)
             send_normal_mqtt = bool(self._rc.get("send_normal_conversations_to_mqtt", False))
             send_normal_cloud = bool(self._rc.get("send_normal_conversations_to_cloud", False))
-            if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt and not (filter_short and is_short_bypass):
+            if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt:
+                if filter_short and is_short_bypass:
+                    logger.debug(f"[Orchestrator] Segment #{seg_no} suppressed from Cloud/MQTT (filter ON & short bypass: '{stt.text}')")
+                else:
 
                 try:
                     snapshot_unique_id = None
