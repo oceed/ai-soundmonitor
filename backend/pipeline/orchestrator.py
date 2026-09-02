@@ -518,11 +518,11 @@ class PipelineOrchestrator:
                 cls = cat.get("classification", default_cls).upper()
                 mapping[key] = cls
 
-            # API Cost Optimization: bypass LLM for short/trivial transcripts
+            # API Cost Optimization: bypass LLM for short/trivial transcripts (<= 3 words)
             text_cleaned = stt.text.strip().lower()
             words = text_cleaned.split()
-            if len(text_cleaned) < 15 or len(words) < 3:
-                logger.debug(f"[LLM #{seg_no}] Transcript too short ('{stt.text}'), bypassing LLM")
+            if len(text_cleaned) < 15 or len(words) <= 3:
+                logger.debug(f"[LLM #{seg_no}] Transcript too short ({len(words)} words, '{stt.text}'), bypassing LLM")
                 from pipeline.llm import FraudResult
                 fraud_result = FraudResult(
                     raw={
@@ -627,10 +627,11 @@ class PipelineOrchestrator:
             else:
                 logger.debug(f"[Orchestrator] Segment #{seg_no} filtered from dashboard (short bypass: '{stt.text}')")
 
-            # Normal Conversation Dispatch to MQTT/Cloud
+            # Normal Conversation Dispatch to MQTT/Cloud (suppressed if filter_short & is_short_bypass)
             send_normal_mqtt = bool(self._rc.get("send_normal_conversations_to_mqtt", False))
             send_normal_cloud = bool(self._rc.get("send_normal_conversations_to_cloud", False))
-            if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt:
+            if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt and not (filter_short and is_short_bypass):
+
                 try:
                     snapshot_unique_id = None
                     if snapshot_path and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
