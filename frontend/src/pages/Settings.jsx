@@ -1012,8 +1012,6 @@ function NotificationsTab({ config, onSave, saving }) {
         )}
       </div>
 
-      </div>
-
       {/* Audio Live Monitoring */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
