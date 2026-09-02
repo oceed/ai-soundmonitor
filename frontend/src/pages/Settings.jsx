@@ -846,7 +846,7 @@ function NotificationsTab({ config, onSave, saving }) {
       <div className="card" style={{ padding: '14px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h3 style={{ margin: 0 }}>Dashboard Display Filter</h3
+            <h3 style={{ margin: 0 }}>Dashboard Display Filter</h3>
             <div className="form-hint">
               Sembunyikan segmen yang terlalu pendek (kurang dari 3 kata / 15 karakter) dari live feed dashboard.
               Segmen tetap disimpan ke database, hanya tidak ditampilkan di UI.
