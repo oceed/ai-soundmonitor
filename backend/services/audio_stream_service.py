@@ -112,12 +112,17 @@ class CounterStream:
     async def _run_async(self) -> None:
         delay = _RECONNECT_MIN
         while not self._stop_event.is_set():
+            was_connected = False
             try:
                 await self._stream_loop()
                 delay = _RECONNECT_MIN  # reset on clean exit
             except Exception as e:
+                was_connected = self._connected
                 self._connected = False
                 if not self._stop_event.is_set():
+                    # If we were previously connected, attempt quick reconnect (2s)
+                    if was_connected:
+                        delay = _RECONNECT_MIN
                     logger.warning(
                         f"[AudioStream/{self.counter_id}] Connection error: {e}. "
                         f"Reconnecting in {delay:.0f}s…"
@@ -148,8 +153,7 @@ class CounterStream:
 
         async with websockets.connect(
             url,
-            ping_interval=20,
-            ping_timeout=10,
+            ping_interval=None,  # Continuous binary push; send() errors catch broken socket directly
             close_timeout=5,
         ) as ws:
             self._connected = True
