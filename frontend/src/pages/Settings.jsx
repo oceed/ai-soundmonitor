@@ -756,6 +756,7 @@ function NotificationsTab({ config, onSave, saving }) {
   const [mqttEnabled, setMqttEnabled] = useState(config.mqtt_enabled ?? false)
   const [mqttHost, setMqttHost] = useState(config.mqtt_broker_host ?? '')
   const [mqttPort, setMqttPort] = useState(config.mqtt_broker_port ?? 1883)
+  const [mqttClientId, setMqttClientId] = useState(config.mqtt_client_id ?? 'voiceguard-fraud-detector')
   const [mqttTopic, setMqttTopic] = useState(config.mqtt_topic ?? 'voiceguard/fraud/alerts')
   const [mqttNormalTopic, setMqttNormalTopic] = useState(config.mqtt_normal_topic ?? 'voiceguard/normal/events')
   const [mqttUser, setMqttUser] = useState(config.mqtt_username ?? '')
@@ -805,6 +806,7 @@ function NotificationsTab({ config, onSave, saving }) {
       mqtt_enabled: mqttEnabled,
       mqtt_broker_host: mqttHost,
       mqtt_broker_port: mqttPort,
+      mqtt_client_id: mqttClientId,
       mqtt_topic: mqttTopic,
       mqtt_normal_topic: mqttNormalTopic,
       mqtt_username: mqttUser,
@@ -872,6 +874,9 @@ function NotificationsTab({ config, onSave, saving }) {
             </SettingRow>
             <SettingRow label="Broker Port">
               <input type="number" className="form-input" value={mqttPort} onChange={e => setMqttPort(Number(e.target.value))} />
+            </SettingRow>
+            <SettingRow label="Client ID" hint="Unique MQTT client identifier (must be unique across all active devices/services)">
+              <input className="form-input" value={mqttClientId} onChange={e => setMqttClientId(e.target.value)} placeholder="voiceguard-fraud-detector" />
             </SettingRow>
             <SettingRow label="Fraud/Alert Topic" hint="MQTT topic to publish fraud/suspicious alert events">
               <input className="form-input" value={mqttTopic} onChange={e => setMqttTopic(e.target.value)} />
