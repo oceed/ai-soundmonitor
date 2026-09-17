@@ -31,7 +31,8 @@ WORKDIR /app
 
 # Install Python dependencies first (layer cache optimization)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN for i in 1 2 3; do pip install --default-timeout=120 --retries=10 -r requirements.txt && break || (echo "Retry $i failed, retrying in 3s..." && sleep 3); done \
+    && rm -rf /root/.cache/pip
 
 # Copy source
 COPY . .
