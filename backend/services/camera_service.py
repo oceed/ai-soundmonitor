@@ -329,3 +329,7 @@ class CameraSnapshotService:
             if cap:
                 cap.release()
         return None
+
+
+# Alias for concise import
+CameraService = CameraSnapshotService
