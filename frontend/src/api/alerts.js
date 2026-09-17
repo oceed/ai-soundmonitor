@@ -42,7 +42,14 @@ export const getSnapshotUrl = (snapshotPath) => {
   if (snapshotPath.startsWith('http://') || snapshotPath.startsWith('https://')) {
     return snapshotPath
   }
-  const clean = snapshotPath.replace(/^\/+/, '')
+  let clean = snapshotPath.replace(/\\/g, '/')
+  if (clean.includes('snapshots/')) {
+    clean = 'snapshots/' + clean.split('snapshots/').pop()
+  } else if (clean.includes('storage/snapshots/')) {
+    clean = 'snapshots/' + clean.split('storage/snapshots/').pop()
+  } else {
+    clean = clean.replace(/^\/+/, '')
+  }
   const base = import.meta.env.VITE_API_URL || ''
   if (base) {
     return `${base.replace(/\/+$/, '')}/${clean}`
@@ -55,11 +62,19 @@ export const getVideoUrl = (videoPath) => {
   if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
     return videoPath
   }
-  const clean = videoPath.replace(/^\/+/, '')
+  let clean = videoPath.replace(/\\/g, '/')
+  if (clean.includes('videos/')) {
+    clean = 'videos/' + clean.split('videos/').pop()
+  } else if (clean.includes('storage/videos/')) {
+    clean = 'videos/' + clean.split('storage/videos/').pop()
+  } else {
+    clean = clean.replace(/^\/+/, '')
+  }
   const base = import.meta.env.VITE_API_URL || ''
   if (base) {
     return `${base.replace(/\/+$/, '')}/${clean}`
   }
   return `http://${window.location.hostname}:8013/${clean}`
 }
+
 

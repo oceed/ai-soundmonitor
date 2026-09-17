@@ -287,8 +287,27 @@ class CameraSnapshotService:
         if fps <= 0 or fps > 60:
             fps = target_fps
 
-        # MP4V codec for cross-platform compatibility
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        # Try browser-compatible H.264 codecs first (avc1/H264/X264), fallback to mp4v
+        fourcc = None
+        for codec_str in ["avc1", "H264", "X264", "mp4v"]:
+            try:
+                code = cv2.VideoWriter_fourcc(*codec_str)
+                test_path = output_path + ".test"
+                test_writer = cv2.VideoWriter(test_path, code, fps, (width, height))
+                if test_writer.isOpened():
+                    fourcc = code
+                    test_writer.release()
+                    if os.path.exists(test_path):
+                        os.remove(test_path)
+                    break
+                if os.path.exists(test_path):
+                    os.remove(test_path)
+            except Exception:
+                pass
+
+        if fourcc is None:
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+
         writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
         max_frames = duration_s * fps
@@ -305,6 +324,23 @@ class CameraSnapshotService:
         finally:
             writer.release()
             cap.release()
+
+        # Try ffmpeg post-processing to ensure HTML5/browser H.264 + yuv420p compatibility
+        if frame_count > 0 and os.path.exists(output_path):
+            try:
+                import subprocess
+                tmp_out = output_path + ".h264.mp4"
+                res = subprocess.run(
+                    ["ffmpeg", "-y", "-i", output_path, "-vcodec", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", tmp_out],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15
+                )
+                if res.returncode == 0 and os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
+                    os.replace(tmp_out, output_path)
+                    logger.info(f"[CameraService] Successfully converted clip to web-compatible H.264 -> {output_path}")
+                elif os.path.exists(tmp_out):
+                    os.remove(tmp_out)
+            except Exception as e:
+                logger.debug(f"[CameraService] FFmpeg conversion omitted: {e}")
 
         return output_path if frame_count > 0 else None
 
