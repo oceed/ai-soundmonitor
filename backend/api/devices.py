@@ -40,7 +40,7 @@ async def get_counters_spatial_status(
     counters = runtime_config.get("counters", [])
     if not counters:
         counters = [{"id": "default", "name": "Default Counter"}]
-    protectqube_url = runtime_config.get("camera_snapshot_protectqube_url", "http://localhost:8012")
+    protectqube_url = runtime_config.get("camera_snapshot_protectqube_url", "http://localhost:8082")
     tol_sec = float(runtime_config.get("spatial_customer_tolerance_seconds", 8.0))
     spatial_enabled = bool(runtime_config.get("spatial_customer_filter_enabled", False))
 

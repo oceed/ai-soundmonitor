@@ -318,7 +318,7 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     # Camera Snapshot Integration
     "camera_snapshot_enabled": False,
     "camera_snapshot_source": "protectqube",
-    "camera_snapshot_protectqube_url": "http://localhost:8012",
+    "camera_snapshot_protectqube_url": "http://localhost:8082",
     "camera_snapshot_timeout": 5,
     "camera_snapshot_on_verdicts": ["FRAUD", "SUSPICIOUS"],
     # Video Alert Recording

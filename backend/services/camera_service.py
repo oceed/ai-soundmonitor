@@ -56,14 +56,18 @@ class CameraSnapshotService:
         now = time.monotonic()
 
         base_clean = protectqube_url.rstrip("/")
-        # Prioritize port 8012 (ProtectQube AI on edge node) before port 8000 (rkllama)
-        if ":8000" in base_clean or ":8012" in base_clean:
-            candidate_bases = [
-                base_clean.replace(":8000", ":8012"),
-                base_clean.replace(":8012", ":8000"),
-            ]
+        # Prioritize port 8082 (ProtectQube AI Gateway/Nginx) before 8012 and 8000
+        import re
+        candidate_bases = []
+        if re.search(r':(8000|8012|8082)', base_clean):
+            for port in ["8082", "8012", "8000"]:
+                alt = re.sub(r':(8000|8012|8082)', f":{port}", base_clean)
+                if alt not in candidate_bases:
+                    candidate_bases.append(alt)
         else:
-            candidate_bases = [base_clean]
+            candidate_bases.append(base_clean)
+            if "localhost" in base_clean or "127.0.0.1" in base_clean or "192.168" in base_clean:
+                candidate_bases.extend(["http://localhost:8082", "http://127.0.0.1:8082", "http://localhost:8012"])
 
         last_err = None
         for cand in candidate_bases:
@@ -196,21 +200,36 @@ class CameraSnapshotService:
         # 1. Try ProtectQube API clip first if configured
         if source == "protectqube":
             try:
-                base_clean = protectqube_url.rstrip("/")
-                url = f"{base_clean}/api/cameras/{camera_id}/clip?duration={duration_s}"
-                req = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "VoiceGuard-Camera-Service"}
-                )
-                with urllib.request.urlopen(req, timeout=duration_s + 5) as resp:
-                    if resp.status == 200:
-                        data = resp.read()
-                        if len(data) > 10000:  # Valid video stream
-                            with open(save_path, "wb") as f:
-                                f.write(data)
-                            rel_path = f"videos/{filename}"
-                            logger.info(f"[CameraService] Fetched video clip from ProtectQube -> {rel_path} ({len(data)} bytes)")
-                            return rel_path
+                import re
+                bases = [protectqube_url.rstrip("/")]
+                if re.search(r':(8000|8012|8082)', protectqube_url):
+                    for p in ["8082", "8012", "8000"]:
+                        alt = re.sub(r':(8000|8012|8082)', f":{p}", protectqube_url.rstrip("/"))
+                        if alt not in bases:
+                            bases.append(alt)
+                else:
+                    bases.append(protectqube_url.rstrip("/"))
+                    for p in ["8082", "8012"]:
+                        bases.append(f"http://localhost:{p}")
+
+                for base_clean in bases:
+                    try:
+                        url = f"{base_clean}/api/cameras/{camera_id}/clip?duration={duration_s}"
+                        req = urllib.request.Request(
+                            url,
+                            headers={"User-Agent": "VoiceGuard-Camera-Service"}
+                        )
+                        with urllib.request.urlopen(req, timeout=duration_s + 5) as resp:
+                            if resp.status == 200:
+                                data = resp.read()
+                                if len(data) > 10000:  # Valid video stream
+                                    with open(save_path, "wb") as f:
+                                        f.write(data)
+                                    rel_path = f"videos/{filename}"
+                                    logger.info(f"[CameraService] Fetched video clip from ProtectQube -> {rel_path} ({len(data)} bytes)")
+                                    return rel_path
+                    except Exception:
+                        continue
             except Exception as e:
                 logger.debug(f"[CameraService] ProtectQube clip fetch failed ({camera_id}): {e}, attempting RTSP direct fallback")
 
@@ -273,24 +292,36 @@ class CameraSnapshotService:
         self, base_url: str, camera_id: str, timeout: int
     ) -> Optional[bytes]:
         """Fetch snapshot image from ProtectQube AI backend API."""
-        base_clean = base_url.rstrip("/")
-        urls = [
-            f"{base_clean}/api/cameras/{camera_id}/snapshot",
-            f"{base_clean}/api/snapshots/latest?camera_id={camera_id}",
-            f"{base_clean}/api/camera/{camera_id}/frame",
-        ]
-        for url in urls:
-            try:
-                req = urllib.request.Request(
-                    url, headers={"User-Agent": "VoiceGuard-Camera-Service"}
-                )
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    if resp.status == 200:
-                        data = resp.read()
-                        if len(data) > 1000:
-                            return data
-            except Exception:
-                continue
+        import re
+        bases = [base_url.rstrip("/")]
+        if re.search(r':(8000|8012|8082)', base_url):
+            for p in ["8082", "8012", "8000"]:
+                alt = re.sub(r':(8000|8012|8082)', f":{p}", base_url.rstrip("/"))
+                if alt not in bases:
+                    bases.append(alt)
+        else:
+            bases.append(base_url.rstrip("/"))
+            for p in ["8082", "8012"]:
+                bases.append(f"http://localhost:{p}")
+
+        for base_clean in bases:
+            urls = [
+                f"{base_clean}/api/cameras/{camera_id}/snapshot",
+                f"{base_clean}/api/snapshots/latest?camera_id={camera_id}",
+                f"{base_clean}/api/camera/{camera_id}/frame",
+            ]
+            for url in urls:
+                try:
+                    req = urllib.request.Request(
+                        url, headers={"User-Agent": "VoiceGuard-Camera-Service"}
+                    )
+                    with urllib.request.urlopen(req, timeout=timeout) as resp:
+                        if resp.status == 200:
+                            data = resp.read()
+                            if len(data) > 1000:
+                                return data
+                except Exception:
+                    continue
         return None
 
     def _fetch_http_snapshot(self, snapshot_url: str, timeout: int) -> Optional[bytes]:
