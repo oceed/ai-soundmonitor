@@ -39,23 +39,57 @@ def _get_candidate_bases(protectqube_url: str, working_base: Optional[str] = Non
 
     base_clean = (protectqube_url or "http://localhost:8082").rstrip("/")
 
-    # 1. Detect LAN IP of the host machine (e.g. 192.168.1.77 on Orange Pi)
+    # 1. Detect ALL LAN IPs across all network interfaces (Ethernet, WiFi, etc.)
+    import subprocess
     lan_ips = []
+    # (a) socket gethostbyname_ex (covers all host interfaces)
+    try:
+        _, _, host_ips = socket.gethostbyname_ex(socket.gethostname())
+        for ip in host_ips:
+            if ip and not ip.startswith("127.") and ip not in lan_ips:
+                lan_ips.append(ip)
+    except Exception:
+        pass
+
+    # (b) hostname -I (standard on Linux/Debian/Ubuntu)
+    try:
+        out = subprocess.check_output(["hostname", "-I"], text=True, timeout=1)
+        for ip in out.strip().split():
+            ip = ip.strip()
+            if ip and not ip.startswith("127.") and ip not in lan_ips:
+                lan_ips.append(ip)
+    except Exception:
+        pass
+
+    # (c) ip -4 addr show (Linux fallback)
+    try:
+        out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1)
+        found = re.findall(r'inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', out)
+        for ip in found:
+            if ip and not ip.startswith("127.") and ip not in lan_ips:
+                lan_ips.append(ip)
+    except Exception:
+        pass
+
+    # (d) UDP connect fallback
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('10.255.255.255', 1))
         ip = s.getsockname()[0]
         s.close()
-        if ip and ip not in ("127.0.0.1", "0.0.0.0"):
+        if ip and not ip.startswith("127.") and ip not in lan_ips:
             lan_ips.append(ip)
     except Exception:
         pass
 
-    for extra in ["172.17.0.1", "host.docker.internal"]:
+    # Prioritize 192.168.x.x (Ethernet LAN) over other interfaces
+    lan_ips.sort(key=lambda ip: (not ip.startswith("192.168."), ip))
+
+    for extra in ["172.17.0.1", "172.18.0.1", "host.docker.internal"]:
         if extra not in lan_ips:
             lan_ips.append(extra)
 
-    # Put host LAN IP on port 8082 first!
+    # Put host LAN IPs on port 8082 first!
     for ip in lan_ips:
         for p in ["8082", "8012"]:
             cand = f"http://{ip}:{p}"
