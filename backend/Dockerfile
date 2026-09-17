@@ -6,7 +6,10 @@
 FROM python:3.11-slim-bookworm
 
 # System dependencies for PyAudio (ALSA) + audio encoding
-RUN rm -rf /var/lib/apt/lists/* \
+RUN echo 'Acquire::http::Pipeline-Depth "0";' > /etc/apt/apt.conf.d/99fixbadproxy \
+    && echo 'Acquire::http::No-Cache "true";' >> /etc/apt/apt.conf.d/99fixbadproxy \
+    && echo 'Acquire::BrokenProxy "true";' >> /etc/apt/apt.conf.d/99fixbadproxy \
+    && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
