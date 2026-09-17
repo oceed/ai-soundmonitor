@@ -1748,10 +1748,10 @@ function CountersTab({ config, devices, onSave, saving }) {
                 </button>
               </div>
 
-              {/* Camera Mapping Inputs */}
+              {/* Camera & Spatial Zone Mapping Inputs */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
+                gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
                 gap: 12,
                 paddingTop: 8,
                 borderTop: '1px dashed var(--border)',
@@ -1768,24 +1768,36 @@ function CountersTab({ config, devices, onSave, saving }) {
                   />
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Direct RTSP Stream URL (Optional)</label>
+                  <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Spatial Zone ID (Opsional)</label>
+                  <input
+                    type="text"
+                    className="form-input mono"
+                    value={c.zone_id || ''}
+                    onChange={e => handleChange(idx, 'zone_id', e.target.value)}
+                    placeholder="zone_cs_1"
+                    title="Opsional: Jika 1 kamera menyorot banyak meja, isi ID polygon zona meja ini di ProtectQube AI"
+                    style={{ fontSize: 11, padding: '5px 8px' }}
+                  />
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Direct RTSP Stream (Opsional)</label>
                   <input
                     type="text"
                     className="form-input mono"
                     value={c.rtsp_url || ''}
                     onChange={e => handleChange(idx, 'rtsp_url', e.target.value)}
-                    placeholder="rtsp://admin:pass@192.168.1.50:554/stream1"
+                    placeholder="rtsp://...:554/live"
                     style={{ fontSize: 11, padding: '5px 8px' }}
                   />
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>HTTP Snapshot URL (Optional)</label>
+                  <label className="form-label" style={{ fontSize: 10, marginBottom: 4 }}>Snapshot URL (Opsional)</label>
                   <input
                     type="text"
                     className="form-input mono"
                     value={c.snapshot_url || ''}
                     onChange={e => handleChange(idx, 'snapshot_url', e.target.value)}
-                    placeholder="http://192.168.1.50/snapshot.jpg"
+                    placeholder="http://.../snap.jpg"
                     style={{ fontSize: 11, padding: '5px 8px' }}
                   />
                 </div>

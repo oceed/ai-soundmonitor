@@ -47,13 +47,18 @@ class CameraSnapshotService:
     ) -> bool:
         """
         Queries ProtectQube AI for customer presence in Customer Service Zone.
+        Supports multi-camera and per-zone filtering (counter_info['camera_id'] & optional counter_info['zone_id']).
         Returns True if customer is currently present or was seen within `tolerance_seconds`.
         """
         camera_id = counter_info.get("camera_id") or counter_info.get("id", "default")
+        zone_id = counter_info.get("zone_id", "").strip() if counter_info.get("zone_id") else ""
+        cache_key = f"{camera_id}_{zone_id}" if zone_id else camera_id
         now = time.monotonic()
 
         base_clean = protectqube_url.rstrip("/")
         url = f"{base_clean}/api/spatial/status/{camera_id}"
+        if zone_id:
+            url += f"?zone_id={urllib.parse.quote(zone_id)}"
 
         try:
             req = urllib.request.Request(
@@ -67,14 +72,14 @@ class CameraSnapshotService:
                     active_count = int(data.get("active_customers", 0))
 
                     if is_present or active_count > 0:
-                        self._last_customer_seen[camera_id] = now
-                        logger.debug(f"[CameraService] Customer present at {camera_id} (active: {active_count})")
+                        self._last_customer_seen[cache_key] = now
+                        logger.debug(f"[CameraService] Customer present at {cache_key} (active: {active_count})")
                         return True
         except Exception as e:
-            logger.debug(f"[CameraService] Spatial status check failed ({camera_id}): {e}")
+            logger.debug(f"[CameraService] Spatial status check failed ({cache_key}): {e}")
 
         # Check if customer was seen within tolerance window (prevents drop during brief turns)
-        last_seen = self._last_customer_seen.get(camera_id, 0.0)
+        last_seen = self._last_customer_seen.get(cache_key, 0.0)
         if (now - last_seen) <= tolerance_seconds and last_seen > 0:
             logger.debug(f"[CameraService] Customer considered present within tolerance window ({now - last_seen:.1f}s ago)")
             return True
