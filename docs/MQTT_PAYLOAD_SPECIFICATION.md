@@ -27,7 +27,10 @@ Setiap payload MQTT berformat **JSON UTF-8** yang ringkas tanpa redundansi alias
 | `alert_id` / `segment_id` | `Integer` | Unique Auto-increment ID transaksi di Database VoiceGuard lokal. | `alert_id` pada topik Alerts, `segment_id` pada topik Normal. |
 | `session_id` | `Integer` | ID sesi jalannya aplikasi pipeline VoiceGuard. | Mengidentifikasi siklus start/stop engine. |
 | `audio_id` | `String (UUID)` | ID unik file rekaman audio dari return API Cloud Upload (`ProtectQube AI Cloud`). | Mengembalikan string UUID jika `audio_upload_enabled: True` dan audio direkam. Mengembalikan `""` jika audio tidak direkam/diunggah. |
-| `snapshot_id` | `String (UUID)` | ID unik foto snapshot kamera dari return API Cloud Upload (`ProtectQube AI Cloud`). | Mengembalikan string UUID jika `camera_snapshot_enabled: True` dan `snapshot_upload_enabled: True`. Mengembalikan `""` jika snapshot tidak diunggah. |
+| `snapshot_id` | `String (UUID)` | ID unik foto snapshot kamera dari return API Cloud Upload (`ProtectQube AI Cloud`). | Mengembalikan string UUID jika snapshot diunggah. Mengembalikan `""` jika snapshot tidak diunggah/dinonaktifkan. |
+| `video_id` | `String (UUID)` | ID unik klip video rekaman bukti dari return API Cloud Upload (`ProtectQube AI Cloud`). | Mengembalikan string UUID jika `video_upload_enabled: True` dan video diunggah. Mengembalikan `""` jika video tidak diunggah/dinonaktifkan. |
+| `video_path` | `String` | Path file lokal klip video MP4 bukti yang tersimpan di disk Edge Node. | Contoh: `"videos/vid_counter_1_FRAUD_20260917_153000.mp4"`. Mengembalikan `""` jika tidak direkam. |
+| `customer_present` | `Boolean` | Indikasi apakah terdeteksi nasabah/orang di Customer Service Zone kamera (Vision AI ProtectQube). | `true` jika nasabah ada di counter, `false` jika counter kosong. |
 | `verdict` | `String` | Keputusan utama dari evaluasi AI. | Nilai: `"FRAUD"`, `"SUSPICIOUS"`, `"NORMAL"`, `"ERROR"`. |
 | `classification` | `String` | Klasifikasi mendalam dari AI LLM. | Nilai: `"FRAUD"`, `"SUSPICIOUS"`, `"NORMAL"`, `"ERROR"`. |
 | `confidence` | `Float/Int` | Tingkat kepastian analisis AI (0 - 100%). | Default: `100`. |
@@ -69,6 +72,9 @@ Field **`device_id`** telah ditambahkan ke seluruh payload MQTT untuk memudahkan
   "session_id": 7051,
   "audio_id": "8f9a2b1c-9912-4cfc-88ab-123456789abc",
   "snapshot_id": "d9e8f7a6-1122-3344-5566-778899aabbcc",
+  "video_id": "7b2e1f4a-5566-7788-99aa-bbccddeeff00",
+  "video_path": "videos/vid_counter_1_FRAUD_20260814_140000.mp4",
+  "customer_present": true,
   "verdict": "FRAUD",
   "classification": "FRAUD",
   "confidence": 98.5,

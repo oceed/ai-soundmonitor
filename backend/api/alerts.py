@@ -154,13 +154,15 @@ async def delete_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    # Delete recording file
-    if alert.recording_path:
-        import os
-        try:
-            os.unlink(alert.recording_path)
-        except OSError:
-            pass
+    # Delete recording files
+    import os
+    for p in [alert.recording_path, alert.snapshot_path, alert.video_path]:
+        if p:
+            try:
+                if os.path.exists(p):
+                    os.unlink(p)
+            except OSError:
+                pass
 
     await db.delete(alert)
     await db.commit()
@@ -193,4 +195,8 @@ def _alert_to_dict(a: Alert) -> dict:
         "mqtt_sent": a.mqtt_sent,
         "mqtt_sent_at": a.mqtt_sent_at.replace(tzinfo=timezone.utc).isoformat() if a.mqtt_sent_at else None,
         "snapshot_path": a.snapshot_path,
+        "video_path": getattr(a, "video_path", None),
+        "video_upload_id": getattr(a, "video_upload_id", None),
+        "video_upload_sent": getattr(a, "video_upload_sent", False),
+        "customer_present": getattr(a, "customer_present", True),
     }

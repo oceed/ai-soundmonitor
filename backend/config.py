@@ -309,12 +309,29 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "counters": [
         {"id": "counter_1", "name": "Meja CS 1", "audio_device_index": -1, "enabled": True, "camera_id": "cam_cs_1", "rtsp_url": "", "snapshot_url": ""}
     ],
+    # Customer Spatial Presence Filter (ProtectQube AI integration)
+    "spatial_customer_filter_enabled": False,
+    "spatial_customer_filter_mode": "cloud_only",  # "cloud_only" (save local, suppress cloud) or "block_all" (drop completely)
+    "spatial_customer_tolerance_seconds": 8.0,
+    # Media Mode Selection: "both" (photo & video), "photo_only", "video_only"
+    "camera_media_mode": "both",
     # Camera Snapshot Integration
     "camera_snapshot_enabled": False,
     "camera_snapshot_source": "protectqube",
     "camera_snapshot_protectqube_url": "http://localhost:8000",
     "camera_snapshot_timeout": 5,
     "camera_snapshot_on_verdicts": ["FRAUD", "SUSPICIOUS"],
+    # Video Alert Recording
+    "video_alert_enabled": False,
+    "video_clip_duration_seconds": 10,
+    "video_source": "protectqube",  # "protectqube" or "rtsp"
+    # Video Cloud Upload
+    "video_upload_enabled": False,
+    "video_upload_url": "https://api.protectqube.ai/api/v1/voice/ai-alerts/file",
+    "video_upload_api_key": "",
+    "video_upload_category": "detections",
+    "video_upload_id_path": "data.id",
+    "video_upload_timeout": 60,
     # Normal Conversation Cloud & MQTT Dispatch
     "send_normal_conversations_to_cloud": False,
     "send_normal_conversations_to_mqtt": False,

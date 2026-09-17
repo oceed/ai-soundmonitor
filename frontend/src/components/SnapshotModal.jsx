@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { getSnapshotUrl } from '../api/alerts'
+import { getSnapshotUrl, getVideoUrl } from '../api/alerts'
 
 const VERDICT_CONFIG = {
   FRAUD:      { color: 'var(--fraud)',      bg: 'var(--fraud-bg)',      border: 'var(--fraud-border)',      icon: '🚨', label: 'FRAUD' },
@@ -11,6 +11,10 @@ const VERDICT_CONFIG = {
 }
 
 export function SnapshotModal({ item, onClose }) {
+  const hasSnapshot = Boolean(item?.snapshot_path)
+  const hasVideo = Boolean(item?.video_path)
+
+  const [activeTab, setActiveTab] = useState(hasVideo && !hasSnapshot ? 'video' : 'photo')
   const [isZoomed, setIsZoomed] = useState(false)
   const [imgLoading, setImgLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
@@ -24,13 +28,16 @@ export function SnapshotModal({ item, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
-  if (!item || !item.snapshot_path) return null
+  if (!item || (!hasSnapshot && !hasVideo)) return null
 
-  const imageUrl = getSnapshotUrl(item.snapshot_path)
+  const imageUrl = hasSnapshot ? getSnapshotUrl(item.snapshot_path) : null
+  const videoUrl = hasVideo ? getVideoUrl(item.video_path) : null
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.NORMAL
   const formattedTime = item.timestamp
     ? format(new Date(item.timestamp), 'EEEE, MMMM d, yyyy · HH:mm:ss')
     : '—'
+
+  const customerPresent = item.customer_present !== undefined ? Boolean(item.customer_present) : null
 
   return (
     <div
@@ -38,7 +45,7 @@ export function SnapshotModal({ item, onClose }) {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.75)',
+        background: 'rgba(0, 0, 0, 0.78)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -54,8 +61,8 @@ export function SnapshotModal({ item, onClose }) {
         className="card animate-in"
         style={{
           width: '100%',
-          maxWidth: isZoomed ? 960 : 680,
-          maxHeight: '92vh',
+          maxWidth: isZoomed ? 960 : 700,
+          maxHeight: '94vh',
           background: 'var(--bg-card)',
           border: `1px solid ${cfg.border || 'var(--border-active)'}`,
           borderRadius: 14,
@@ -78,8 +85,8 @@ export function SnapshotModal({ item, onClose }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               borderRadius: 8,
               background: cfg.bg,
               border: `1px solid ${cfg.border}`,
@@ -88,12 +95,12 @@ export function SnapshotModal({ item, onClose }) {
               justifyContent: 'center',
               fontSize: 16,
             }}>
-              📷
+              {activeTab === 'video' ? '🎥' : '📷'}
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Camera Snapshot Evidence
+                  Camera Media Evidence
                 </span>
                 <span style={{
                   fontSize: 10,
@@ -106,6 +113,19 @@ export function SnapshotModal({ item, onClose }) {
                 }}>
                   {cfg.icon} {item.verdict || 'EVENT'}
                 </span>
+                {customerPresent !== null && (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: 20,
+                    background: customerPresent ? 'rgba(50, 220, 50, 0.12)' : 'rgba(240, 150, 20, 0.14)',
+                    color: customerPresent ? '#22c55e' : '#f59e0b',
+                    border: `1px solid ${customerPresent ? 'rgba(50, 220, 50, 0.3)' : 'rgba(240, 150, 20, 0.3)'}`,
+                  }}>
+                    {customerPresent ? '👤 Customer Present' : '⚠️ No Customer in Zone'}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                 {item.counterName || (item.counter_id ? `Counter: ${item.counter_id}` : 'Counter Desk')} · {formattedTime}
@@ -144,64 +164,135 @@ export function SnapshotModal({ item, onClose }) {
           </div>
         </div>
 
-        {/* Image Display Area */}
+        {/* Tab Switcher (Foto vs Video) */}
+        {hasSnapshot && hasVideo && (
+          <div style={{
+            display: 'flex',
+            background: 'var(--bg-surface)',
+            borderBottom: '1px solid var(--border)',
+            padding: '4px 16px',
+            gap: 6,
+          }}>
+            <button
+              onClick={() => setActiveTab('photo')}
+              style={{
+                padding: '6px 14px',
+                fontSize: 12,
+                fontWeight: activeTab === 'photo' ? 700 : 500,
+                color: activeTab === 'photo' ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: activeTab === 'photo' ? 'var(--bg-elevated)' : 'transparent',
+                border: activeTab === 'photo' ? '1px solid var(--border)' : '1px solid transparent',
+                borderRadius: 6,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>📷 Foto Snapshot</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('video')}
+              style={{
+                padding: '6px 14px',
+                fontSize: 12,
+                fontWeight: activeTab === 'video' ? 700 : 500,
+                color: activeTab === 'video' ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: activeTab === 'video' ? 'var(--bg-elevated)' : 'transparent',
+                border: activeTab === 'video' ? '1px solid var(--border)' : '1px solid transparent',
+                borderRadius: 6,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>🎥 Video Clip MP4</span>
+            </button>
+          </div>
+        )}
+
+        {/* Media Display Area */}
         <div style={{
           position: 'relative',
           background: '#000000',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: 260,
+          minHeight: 280,
           maxHeight: isZoomed ? '65vh' : '48vh',
           overflow: 'hidden',
           userSelect: 'none',
         }}>
-          {imgLoading && !imgError && (
-            <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <div className="spinner" style={{ width: 28, height: 28 }} />
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Loading snapshot…</span>
-            </div>
-          )}
-
-          {imgError ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-              <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>⚠️</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Snapshot image not found</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                {item.snapshot_path}
-              </div>
-            </div>
-          ) : (
-            <img
-              src={imageUrl}
-              alt="Camera Snapshot Evidence"
-              onLoad={() => setImgLoading(false)}
-              onError={() => { setImgLoading(false); setImgError(true); }}
-              onClick={() => setIsZoomed(!isZoomed)}
+          {activeTab === 'video' && videoUrl ? (
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              playsInline
               style={{
                 maxWidth: '100%',
                 maxHeight: isZoomed ? '65vh' : '48vh',
                 objectFit: 'contain',
-                display: 'block',
-                cursor: isZoomed ? 'zoom-out' : 'zoom-in',
-                transition: 'transform 0.2s ease',
+                outline: 'none',
               }}
-            />
+            >
+              Your browser does not support the video tag.
+            </video>
+          ) : activeTab === 'photo' && imageUrl ? (
+            <>
+              {imgLoading && !imgError && (
+                <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div className="spinner" style={{ width: 28, height: 28 }} />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Loading snapshot…</span>
+                </div>
+              )}
+
+              {imgError ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>⚠️</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Snapshot image not found</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                    {item.snapshot_path}
+                  </div>
+                </div>
+              ) : (
+                <img
+                  src={imageUrl}
+                  alt="Camera Snapshot Evidence"
+                  onLoad={() => setImgLoading(false)}
+                  onError={() => { setImgLoading(false); setImgError(true); }}
+                  onClick={() => setIsZoomed(!isZoomed)}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: isZoomed ? '65vh' : '48vh',
+                    objectFit: 'contain',
+                    display: 'block',
+                    cursor: isZoomed ? 'zoom-out' : 'zoom-in',
+                    transition: 'transform 0.2s ease',
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <div style={{ padding: 40, color: 'var(--text-muted)' }}>No media available</div>
           )}
 
           <div style={{
             position: 'absolute',
             bottom: 8,
             right: 8,
-            background: 'rgba(0,0,0,0.65)',
+            background: 'rgba(0,0,0,0.7)',
             backdropFilter: 'blur(4px)',
             borderRadius: 4,
-            padding: '2px 8px',
+            padding: '3px 8px',
             fontSize: 10,
-            color: 'var(--text-muted)',
+            color: '#e2e8f0',
             fontFamily: 'var(--font-mono)',
           }}>
-            {item.snapshot_path.split('/').pop()}
+            {activeTab === 'video'
+              ? (item.video_path?.split('/').pop() || 'video.mp4')
+              : (item.snapshot_path?.split('/').pop() || 'snapshot.jpg')}
           </div>
         </div>
 
@@ -221,8 +312,7 @@ export function SnapshotModal({ item, onClose }) {
               background: 'var(--bg-elevated)',
               padding: '10px 14px',
               borderRadius: 8,
-              borderLeft: `3px solid ${cfg.color}`,
-              border: `1px solid var(--border)`,
+              border: '1px solid var(--border)',
               borderLeftWidth: 3,
               borderLeftColor: cfg.color,
             }}>
@@ -261,23 +351,49 @@ export function SnapshotModal({ item, onClose }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <a
-                href={imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-ghost btn-sm"
-                style={{ fontSize: 11 }}
-              >
-                ↗ Open Full Size
-              </a>
-              <a
-                href={imageUrl}
-                download={item.snapshot_path.split('/').pop() || 'snapshot.jpg'}
-                className="btn btn-primary btn-sm"
-                style={{ fontSize: 11 }}
-              >
-                ↓ Download Image
-              </a>
+              {activeTab === 'photo' && imageUrl && (
+                <>
+                  <a
+                    href={imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11 }}
+                  >
+                    ↗ Open Full Image
+                  </a>
+                  <a
+                    href={imageUrl}
+                    download={item.snapshot_path?.split('/').pop() || 'snapshot.jpg'}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: 11 }}
+                  >
+                    ↓ Download Image
+                  </a>
+                </>
+              )}
+
+              {activeTab === 'video' && videoUrl && (
+                <>
+                  <a
+                    href={videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11 }}
+                  >
+                    ↗ Open Video
+                  </a>
+                  <a
+                    href={videoUrl}
+                    download={item.video_path?.split('/').pop() || 'video.mp4'}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: 11 }}
+                  >
+                    ↓ Download Video
+                  </a>
+                </>
+              )}
             </div>
           </div>
         </div>

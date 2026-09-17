@@ -49,3 +49,17 @@ export const getSnapshotUrl = (snapshotPath) => {
   }
   return `http://${window.location.hostname}:8013/${clean}`
 }
+
+export const getVideoUrl = (videoPath) => {
+  if (!videoPath) return null
+  if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+    return videoPath
+  }
+  const clean = videoPath.replace(/^\/+/, '')
+  const base = import.meta.env.VITE_API_URL || ''
+  if (base) {
+    return `${base.replace(/\/+$/, '')}/${clean}`
+  }
+  return `http://${window.location.hostname}:8013/${clean}`
+}
+

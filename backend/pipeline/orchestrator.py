@@ -134,6 +134,7 @@ class PipelineOrchestrator:
         self._mqtt = None
         self._audio_uploader = None
         self._snapshot_uploader = None
+        self._video_uploader = None
         self._camera_service = None
         self._audio_stream_svc = None
 
@@ -177,6 +178,7 @@ class PipelineOrchestrator:
         self._init_mqtt()
         self._init_audio_uploader()
         self._init_snapshot_uploader()
+        self._init_video_uploader()
         self._init_camera_service()
         self._init_audio_stream()
 
@@ -445,6 +447,16 @@ class PipelineOrchestrator:
         except Exception as e:
             logger.error(f"[Orchestrator] Snapshot uploader init failed: {e}")
 
+    def _init_video_uploader(self) -> None:
+        if not self._rc.get("video_upload_enabled", False):
+            return
+        try:
+            from services.video_upload import VideoUploadService
+            self._video_uploader = VideoUploadService(self._rc)
+            logger.info("[Orchestrator] VideoUploadService initialized")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Video uploader init failed: {e}")
+
     def _init_camera_service(self) -> None:
         try:
             from services.camera_service import CameraSnapshotService
@@ -625,24 +637,40 @@ class PipelineOrchestrator:
                 verdict_key = fraud_result.verdict if fraud_result.verdict in self._stats else "ERROR"
                 self._stats[verdict_key] = self._stats.get(verdict_key, 0) + 1
 
+            # Spatial Customer Presence Check
+            spatial_filter_enabled = bool(self._rc.get("spatial_customer_filter_enabled", False))
+            spatial_filter_mode = self._rc.get("spatial_customer_filter_mode", "cloud_only")
+            tol_sec = float(self._rc.get("spatial_customer_tolerance_seconds", 8.0))
+            camera_media_mode = self._rc.get("camera_media_mode", "both")
+
+            customer_present = True
+            counter_info = {"id": self._counter_id, "name": self._counter_name}
+            counters = self._rc.get("counters", [])
+            for c in counters:
+                if c.get("id") == self._counter_id:
+                    counter_info = c
+                    break
+
+            if spatial_filter_enabled and self._camera_service:
+                protectqube_url = self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000")
+                customer_present = self._camera_service.check_customer_presence(
+                    counter_info=counter_info,
+                    protectqube_url=protectqube_url,
+                    tolerance_seconds=tol_sec,
+                )
+
             # Camera Snapshot Trigger
             camera_enabled = bool(self._rc.get("camera_snapshot_enabled", False))
             target_verdicts = set(self._rc.get("camera_snapshot_on_verdicts", ["FRAUD", "SUSPICIOUS"]))
             snapshot_on_normal = bool(self._rc.get("snapshot_on_normal_conversation", False))
             classification = fraud_result.classification
 
-            should_snapshot = camera_enabled and (
+            should_snapshot = camera_enabled and (camera_media_mode in ("both", "photo_only")) and (
                 classification in target_verdicts or (classification == "NORMAL" and snapshot_on_normal)
             )
 
             snapshot_path = None
             if should_snapshot and self._camera_service:
-                counter_info = {"id": self._counter_id, "name": self._counter_name}
-                counters = self._rc.get("counters", [])
-                for c in counters:
-                    if c.get("id") == self._counter_id:
-                        counter_info = c
-                        break
                 try:
                     snapshot_path = self._camera_service.capture_snapshot(
                         counter_info=counter_info,
@@ -653,6 +681,27 @@ class PipelineOrchestrator:
                     )
                 except Exception as snap_err:
                     logger.error(f"[Orchestrator] Error capturing snapshot: {snap_err}")
+
+            # Video Clip Trigger
+            video_enabled = bool(self._rc.get("video_alert_enabled", camera_media_mode != "photo_only"))
+            should_video = video_enabled and (camera_media_mode in ("both", "video_only")) and (
+                classification in target_verdicts
+            )
+
+            video_path = None
+            if should_video and self._camera_service:
+                try:
+                    duration_s = int(self._rc.get("video_clip_duration_seconds", 10))
+                    v_source = self._rc.get("video_source", self._rc.get("camera_snapshot_source", "protectqube"))
+                    video_path = self._camera_service.capture_video_clip(
+                        counter_info=counter_info,
+                        duration_s=duration_s,
+                        source=v_source,
+                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000"),
+                        verdict=classification,
+                    )
+                except Exception as vid_err:
+                    logger.error(f"[Orchestrator] Error capturing video clip: {vid_err}")
 
             # Persist to DB
             segment_id = self._db.save_segment(
@@ -758,7 +807,12 @@ class PipelineOrchestrator:
             is_alert = classification in alert_verdicts or fraud_result.is_alert
             should_record_all = (record_verdict == "ALL")
 
-            if is_alert or should_record_all:
+            # Check if alert should be completely blocked by Spatial Filter
+            if is_alert and spatial_filter_enabled and not customer_present and spatial_filter_mode == "block_all":
+                logger.warning(
+                    f"[Spatial Filter] Alert #{seg_no} BLOCKED: No customer detected in customer spatial zone for '{self._counter_id}'"
+                )
+            elif is_alert or should_record_all:
                 self._handle_alert(
                     segment_id=segment_id,
                     segment_no=seg_no,
@@ -770,6 +824,8 @@ class PipelineOrchestrator:
                     duration_s=item["duration_s"],
                     pcm=item.get("pcm"),
                     snapshot_path=snapshot_path,
+                    video_path=video_path,
+                    customer_present=customer_present,
                 )
 
             self._llm_queue.task_done()
@@ -780,7 +836,7 @@ class PipelineOrchestrator:
     # Alert Handler
     # ──────────────────────────────────────────────────────
 
-    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None, snapshot_path=None) -> None:
+    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None, snapshot_path=None, video_path=None, customer_present=True) -> None:
         logger.info(
             f"[Alert] Segment #{segment_no}: {fraud_result.classification} "
             f"({fraud_result.confidence}%) — {fraud_result.reason[:60]}"
@@ -797,6 +853,8 @@ class PipelineOrchestrator:
             post_buffer_s=self._rc.get("post_buffer_seconds", 15.0),
             counter_id=self._counter_id,
             snapshot_path=snapshot_path,
+            video_path=video_path,
+            customer_present=customer_present,
         )
 
         # Broadcast UI alert
@@ -813,16 +871,18 @@ class PipelineOrchestrator:
             "timestamp": timestamp.isoformat(),
             "has_recording": False,
             "snapshot_path": snapshot_path,
+            "video_path": video_path,
+            "customer_present": customer_present,
         })
 
         # Trigger recording + MQTT in background thread
         threading.Thread(
             target=self._alert_postprocess,
-            args=(alert_id, fraud_result, timestamp, start_mono, end_mono, pcm),
+            args=(alert_id, fraud_result, timestamp, start_mono, end_mono, pcm, video_path, customer_present),
             daemon=True,
         ).start()
 
-    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime, start_mono: float, end_mono: float, pcm: bytes = None) -> None:
+    def _alert_postprocess(self, alert_id: int, fraud_result, timestamp: datetime, start_mono: float, end_mono: float, pcm: bytes = None, video_path: str = None, customer_present: bool = True) -> None:
         """Handle recording + audio upload + MQTT in background."""
         # 1. Trigger recorder
         record_verdict = self._rc.get("record_on_verdict", "BOTH")
@@ -885,7 +945,9 @@ class PipelineOrchestrator:
         snapshot_unique_id = None
         alert_data = self._db.get_alert(alert_id)
         snap_path_str = alert_data.get("snapshot_path", "") if alert_data else ""
-        if snap_path_str and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+        camera_media_mode = self._rc.get("camera_media_mode", "both")
+
+        if snap_path_str and (camera_media_mode in ("both", "photo_only")) and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
             try:
                 storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
                 target_file = storage_base / snap_path_str.lstrip('/')
@@ -897,36 +959,63 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(f"[Alert {alert_id}] Snapshot upload failed: {e}")
 
-        # 4. Publish MQTT (only for actual alerts)
-        if is_actual_alert and self._rc.get("mqtt_enabled", False) and self._mqtt:
+        # 3.6. Upload video & get unique video ID
+        video_unique_id = None
+        vid_path_str = video_path or (alert_data.get("video_path", "") if alert_data else "")
+        if vid_path_str and (camera_media_mode in ("both", "video_only")) and self._rc.get("video_upload_enabled", False) and self._video_uploader:
             try:
-                payload = {
-                    "alert_id": alert_id,
-                    "session_id": self._session_id,
-                    "audio_id": audio_unique_id or "",
-                    "snapshot_id": snapshot_unique_id or "",
-                    "verdict": fraud_result.verdict,
-                    "classification": fraud_result.classification,
-                    "confidence": fraud_result.confidence,
-                    "risk_level": fraud_result.risk_level,
-                    "reason": fraud_result.reason,
-                    "flags": fraud_result.active_flags,
-                    "evidence": fraud_result.evidence,
-                    "transcript": alert_data.get("transcript", "") if alert_data else "",
-                    "snapshot_path": snap_path_str,
-                    "timestamp": timestamp.isoformat(),
-                    "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
-                    "device_name": self._rc.get("device_name", ""),
-                    "counter_id": self._counter_id,
-                }
-                published = self._mqtt.publish(payload)
-                if published:
-                    self._db.mark_mqtt_sent(alert_id)
-                    logger.info(f"[Alert {alert_id}] Published to MQTT")
-                else:
-                    logger.warning(f"[Alert {alert_id}] MQTT publish skipped (broker offline/not connected)")
-            except Exception as e:
-                logger.error(f"[Alert {alert_id}] MQTT publish failed: {e}")
+                storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+                target_vid = storage_base / vid_path_str.lstrip('/')
+                if not target_vid.exists():
+                    target_vid = Path(vid_path_str)
+                if target_vid.exists():
+                    video_unique_id = self._video_uploader.upload(str(target_vid))
+                    if video_unique_id:
+                        self._db.update_alert_video_upload_id(alert_id, video_unique_id)
+                        logger.info(f"[Alert {alert_id}] Video uploaded, video_id={video_unique_id}")
+            except Exception as ve:
+                logger.error(f"[Alert {alert_id}] Video upload failed: {ve}")
+
+        # 4. Publish MQTT (only for actual alerts)
+        spatial_filter_enabled = bool(self._rc.get("spatial_customer_filter_enabled", False))
+        spatial_filter_mode = self._rc.get("spatial_customer_filter_mode", "cloud_only")
+
+        if is_actual_alert and self._rc.get("mqtt_enabled", False) and self._mqtt:
+            # Check if suppressed by spatial filter
+            if spatial_filter_enabled and not customer_present and spatial_filter_mode == "cloud_only":
+                logger.info(f"[Spatial Filter] Alert {alert_id} MQTT/Cloud publish suppressed: No customer present in zone")
+            else:
+                try:
+                    payload = {
+                        "alert_id": alert_id,
+                        "session_id": self._session_id,
+                        "audio_id": audio_unique_id or "",
+                        "snapshot_id": snapshot_unique_id or "",
+                        "video_id": video_unique_id or "",
+                        "video_path": vid_path_str or "",
+                        "customer_present": customer_present,
+                        "verdict": fraud_result.verdict,
+                        "classification": fraud_result.classification,
+                        "confidence": fraud_result.confidence,
+                        "risk_level": fraud_result.risk_level,
+                        "reason": fraud_result.reason,
+                        "flags": fraud_result.active_flags,
+                        "evidence": fraud_result.evidence,
+                        "transcript": alert_data.get("transcript", "") if alert_data else "",
+                        "snapshot_path": snap_path_str,
+                        "timestamp": timestamp.isoformat(),
+                        "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
+                        "device_name": self._rc.get("device_name", ""),
+                        "counter_id": self._counter_id,
+                    }
+                    published = self._mqtt.publish(payload)
+                    if published:
+                        self._db.mark_mqtt_sent(alert_id)
+                        logger.info(f"[Alert {alert_id}] Published to MQTT (audio_id='{audio_unique_id or ''}', snap_id='{snapshot_unique_id or ''}', vid_id='{video_unique_id or ''}')")
+                    else:
+                        logger.warning(f"[Alert {alert_id}] MQTT publish skipped (broker offline/not connected)")
+                except Exception as e:
+                    logger.error(f"[Alert {alert_id}] MQTT publish failed: {e}")
 
     # ──────────────────────────────────────────────────────
     # WebSocket Broadcast

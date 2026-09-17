@@ -192,6 +192,8 @@ class DBWriter:
         post_buffer_s: float,
         counter_id: str = "default",
         snapshot_path: Optional[str] = None,
+        video_path: Optional[str] = None,
+        customer_present: bool = True,
     ) -> int:
         with self._session() as s:
             alert = Alert(
@@ -209,6 +211,8 @@ class DBWriter:
                 post_buffer_s=post_buffer_s,
                 counter_id=counter_id,
                 snapshot_path=snapshot_path,
+                video_path=video_path,
+                customer_present=customer_present,
             )
             s.add(alert)
             s.commit()
@@ -219,6 +223,13 @@ class DBWriter:
             alert = s.get(Alert, alert_id)
             if alert:
                 alert.snapshot_path = snapshot_path
+                s.commit()
+
+    def update_alert_video(self, alert_id: int, video_path: str) -> None:
+        with self._session() as s:
+            alert = s.get(Alert, alert_id)
+            if alert:
+                alert.video_path = video_path
                 s.commit()
 
     def update_alert_recording(self, alert_id: int, recording_info: dict) -> None:
@@ -239,6 +250,14 @@ class DBWriter:
                 alert.audio_upload_sent = True
                 s.commit()
 
+    def update_alert_video_upload_id(self, alert_id: int, upload_id: str) -> None:
+        with self._session() as s:
+            alert = s.get(Alert, alert_id)
+            if alert:
+                alert.video_upload_id = upload_id
+                alert.video_upload_sent = True
+                s.commit()
+
     def mark_mqtt_sent(self, alert_id: int) -> None:
         with self._session() as s:
             alert = s.get(Alert, alert_id)
@@ -254,6 +273,8 @@ class DBWriter:
                 return {
                     "transcript": alert.transcript,
                     "snapshot_path": alert.snapshot_path or "",
+                    "video_path": getattr(alert, "video_path", "") or "",
+                    "customer_present": getattr(alert, "customer_present", True),
                 }
         return None
 

@@ -260,8 +260,11 @@ app.include_router(sessions_router)
 from fastapi.staticfiles import StaticFiles
 snapshots_dir = Path(settings.storage_path) / "snapshots"
 snapshots_dir.mkdir(parents=True, exist_ok=True)
+videos_dir = Path(settings.storage_path) / "videos"
+videos_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/storage", StaticFiles(directory=settings.storage_path), name="storage")
 app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
+app.mount("/videos", StaticFiles(directory=videos_dir), name="videos")
 
 
 # ─────────────────────────────────────────────────────────

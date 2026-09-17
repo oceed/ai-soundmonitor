@@ -391,9 +391,44 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapsh
                   border: '1px solid rgba(255,122,0,0.35)',
                   cursor: 'pointer',
                 }}
-                title="Click to view full snapshot image"
+                title="Click to view camera snapshot"
               >
-                📷 SNAPSHOT
+                📷 PHOTO
+              </span>
+            )}
+
+            {alert.video_path && (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSnapshotClick?.({ ...alert, counterName });
+                }}
+                className="badge"
+                style={{
+                  fontSize: 9,
+                  background: 'rgba(56,189,248,0.15)',
+                  color: '#38bdf8',
+                  border: '1px solid rgba(56,189,248,0.35)',
+                  cursor: 'pointer',
+                }}
+                title="Click to play video evidence"
+              >
+                🎥 VIDEO
+              </span>
+            )}
+
+            {alert.customer_present !== undefined && !alert.customer_present && (
+              <span
+                className="badge"
+                style={{
+                  fontSize: 9,
+                  background: 'rgba(240,150,20,0.15)',
+                  color: '#f59e0b',
+                  border: '1px solid rgba(240,150,20,0.35)',
+                }}
+                title="No customer was detected in the customer spatial zone"
+              >
+                ⚠️ NO CUSTOMER
               </span>
             )}
           </div>
@@ -419,11 +454,16 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapsh
       {/* Expanded detail */}
       {expanded && (
         <div style={{ borderTop: `1px solid var(--border)`, padding: '16px', background: 'var(--bg-elevated)' }}>
-          {/* Camera Snapshot Image Preview */}
-          {alert.snapshot_path && (
+          {/* Camera Media Evidence Preview */}
+          {(alert.snapshot_path || alert.video_path) && (
             <div style={{ marginBottom: 16 }}>
               <div className="form-label" style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>📷 Camera Snapshot Evidence</span>
+                <span>📷 / 🎥 Camera Media Evidence</span>
+                {alert.customer_present !== undefined && (
+                  <span style={{ fontSize: 10, color: alert.customer_present ? 'var(--clear)' : '#f59e0b', marginLeft: 8 }}>
+                    {alert.customer_present ? '✓ Customer in Zone' : '⚠️ No Customer in Zone'}
+                  </span>
+                )}
               </div>
               <div
                 onClick={(e) => {
@@ -441,7 +481,7 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapsh
                   cursor: 'pointer',
                   transition: 'all var(--t-fast)',
                 }}
-                title="Click to expand high-resolution snapshot"
+                title="Click to view media evidence (photo/video)"
               >
                 <div style={{
                   width: 80,

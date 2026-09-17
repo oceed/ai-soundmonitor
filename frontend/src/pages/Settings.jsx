@@ -791,6 +791,27 @@ function NotificationsTab({ config, onSave, saving }) {
   const [audioStreamUrl, setAudioStreamUrl] = useState(config.audio_stream_cloud_url ?? 'wss://api.protectqube.ai/ws/audio-ingest')
   const [audioStreamToken, setAudioStreamToken] = useState('')
 
+  // Customer Spatial Presence Filter (ProtectQube AI integration)
+  const [spatialFilterEnabled, setSpatialFilterEnabled] = useState(config.spatial_customer_filter_enabled ?? false)
+  const [spatialFilterMode, setSpatialFilterMode] = useState(config.spatial_customer_filter_mode ?? 'cloud_only')
+  const [spatialToleranceSec, setSpatialToleranceSec] = useState(config.spatial_customer_tolerance_seconds ?? 8.0)
+
+  // Media Mode: "both", "photo_only", "video_only"
+  const [cameraMediaMode, setCameraMediaMode] = useState(config.camera_media_mode ?? 'both')
+
+  // Video Alert Recording
+  const [videoEnabled, setVideoEnabled] = useState(config.video_alert_enabled ?? false)
+  const [videoDuration, setVideoDuration] = useState(config.video_clip_duration_seconds ?? 10)
+  const [videoSource, setVideoSource] = useState(config.video_source ?? 'protectqube')
+
+  // Video Upload API
+  const [videoUploadEnabled, setVideoUploadEnabled] = useState(config.video_upload_enabled ?? false)
+  const [videoUploadUrl, setVideoUploadUrl] = useState(config.video_upload_url ?? 'https://api.protectqube.ai/api/v1/voice/ai-alerts/file')
+  const [videoUploadKey, setVideoUploadKey] = useState('')
+  const [videoUploadCategory, setVideoUploadCategory] = useState(config.video_upload_category ?? 'detections')
+  const [videoUploadIdPath, setVideoUploadIdPath] = useState(config.video_upload_id_path ?? 'data.id')
+  const [videoUploadTimeout, setVideoUploadTimeout] = useState(config.video_upload_timeout ?? 60)
+
   // Dashboard display filter
   const [filterShortSegments, setFilterShortSegments] = useState(config.filter_short_segments_dashboard ?? false)
 
@@ -829,6 +850,22 @@ function NotificationsTab({ config, onSave, saving }) {
       camera_snapshot_timeout: cameraTimeout,
       camera_snapshot_on_verdicts: cameraVerdicts,
       snapshot_on_normal_conversation: snapOnNormal,
+      // Customer Spatial Presence Filter
+      spatial_customer_filter_enabled: spatialFilterEnabled,
+      spatial_customer_filter_mode: spatialFilterMode,
+      spatial_customer_tolerance_seconds: Number(spatialToleranceSec),
+      // Media Mode
+      camera_media_mode: cameraMediaMode,
+      // Video Alert Recording (automatically active if mode includes video)
+      video_alert_enabled: cameraMediaMode !== 'photo_only',
+      video_clip_duration_seconds: Number(videoDuration),
+      video_source: videoSource,
+      // Video Cloud Upload API
+      video_upload_enabled: cameraMediaMode !== 'photo_only' ? videoUploadEnabled : false,
+      video_upload_url: videoUploadUrl,
+      video_upload_category: videoUploadCategory,
+      video_upload_id_path: videoUploadIdPath,
+      video_upload_timeout: Number(videoUploadTimeout),
       // Audio Live Monitoring
       audio_stream_enabled: audioStreamEnabled,
       audio_stream_cloud_url: audioStreamUrl,
@@ -838,6 +875,7 @@ function NotificationsTab({ config, onSave, saving }) {
     if (mqttPass) updates.mqtt_password = mqttPass
     if (audioUploadKey) updates.audio_upload_api_key = audioUploadKey
     if (snapshotUploadKey) updates.snapshot_upload_api_key = snapshotUploadKey
+    if (videoUploadKey) updates.video_upload_api_key = videoUploadKey
     if (audioStreamToken) updates.audio_stream_device_token = audioStreamToken
     onSave(updates)
   }
@@ -1013,6 +1051,129 @@ function NotificationsTab({ config, onSave, saving }) {
               )}
             </div>
           </>
+        )}
+      </div>
+
+      {/* Customer Spatial Presence Filter (ProtectQube AI) */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <h3>👤 Customer Spatial Presence Filter</h3>
+            <div className="form-hint">
+              Hanya kirim atau buat alert jika terdeteksi ada orang/nasabah di area spasial customer (Customer Service Zone di ProtectQube AI).
+            </div>
+          </div>
+          <Toggle checked={spatialFilterEnabled} onChange={setSpatialFilterEnabled} />
+        </div>
+
+        {spatialFilterEnabled && (
+          <>
+            <div className="form-hint" style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(56,189,248,0.07)', borderRadius: 6, border: '1px solid rgba(56,189,248,0.2)' }}>
+              ℹ️ VoiceGuard secara otomatis menanyakan status keberadaan orang di Customer Service Zone ke ProtectQube AI Engine.
+            </div>
+            <SettingRow label="Filter Mode" hint="Pilih tindakan yang dilakukan jika zona spasial customer kosong saat percakapan mencurigakan terjadi">
+              <select className="form-select" value={spatialFilterMode} onChange={e => setSpatialFilterMode(e.target.value)}>
+                <option value="cloud_only">Tahan Pengiriman Cloud / MQTT (Tetap catat di histori lokal)</option>
+                <option value="block_all">Blokir Total (Batalkan pembuatan alert sepenuhnya)</option>
+              </select>
+            </SettingRow>
+            <SettingRow label="Toleransi Keberadaan (Detik)" hint="Batas toleransi jeda waktu nasabah dianggap masih berada di counter setelah terdeteksi kamera (mencegah false drop saat nasabah bergerak)">
+              <input
+                type="number"
+                min="1"
+                max="60"
+                className="form-input"
+                value={spatialToleranceSec}
+                onChange={e => setSpatialToleranceSec(Number(e.target.value))}
+                style={{ width: 120 }}
+              />
+            </SettingRow>
+          </>
+        )}
+      </div>
+
+      {/* Media Evidence Selection: Photo, Video, or Both */}
+      <div className="card">
+        <div style={{ marginBottom: 16 }}>
+          <h3 style={{ margin: 0 }}>📸 / 🎥 Bukti Media Alert (Visual Evidence)</h3>
+          <div className="form-hint">
+            Atur jenis bukti visual yang akan diambil saat percakapan alert terjadi, serta opsi upload video ke Cloud.
+          </div>
+        </div>
+
+        <SettingRow label="Mode Bukti Media" hint="Pilih apakah ingin melampirkan Foto Snapshot saja, Video saja, atau Dua-duanya">
+          <select className="form-select" value={cameraMediaMode} onChange={e => setCameraMediaMode(e.target.value)}>
+            <option value="both">📸 Foto Snapshot & 🎥 Rekaman Video (Dua-duanya)</option>
+            <option value="photo_only">📸 Hanya Foto Snapshot Saja</option>
+            <option value="video_only">🎥 Hanya Rekaman Video Saja</option>
+          </select>
+        </SettingRow>
+
+        {cameraMediaMode === 'photo_only' ? (
+          <div className="form-hint" style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(56,189,248,0.07)', borderRadius: 6, border: '1px solid rgba(56,189,248,0.2)' }}>
+            ℹ️ <strong>Mode Foto Saja Aktif:</strong> Sistem hanya akan mengambil snapshot foto kamera. Perekaman video lokal dan upload video dinonaktifkan secara otomatis untuk menghemat resource edge & kuota internet.
+          </div>
+        ) : (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Konfigurasi Rekaman Video
+            </h4>
+
+            <SettingRow label="Sumber Perekaman Video" hint="Metode pengambilan klip video rekaman saat alert">
+              <select className="form-select" value={videoSource} onChange={e => setVideoSource(e.target.value)}>
+                <option value="protectqube">ProtectQube AI API (via /api/cameras/{'{id}'}/clip)</option>
+                <option value="rtsp">Direct RTSP Stream (Perekaman mandiri via OpenCV lokal)</option>
+              </select>
+            </SettingRow>
+
+            <SettingRow label="Durasi Klip Video (Detik)" hint="Panjang durasi rekaman video bukti (rekomendasi: 5 - 15 detik)">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="number"
+                  min="3"
+                  max="60"
+                  className="form-input"
+                  value={videoDuration}
+                  onChange={e => setVideoDuration(Number(e.target.value))}
+                  style={{ width: 80 }}
+                />
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>detik</span>
+              </div>
+            </SettingRow>
+
+            {/* Video Cloud Upload Sub-section */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0 }}>Upload Video ke Cloud (API & MQTT)</h4>
+                  <div className="form-hint">
+                    Jika ON: File MP4 diunggah ke Cloud File Server dan ID video (<code>video_id</code>) disertakan ke payload MQTT. Matikan jika ingin hemat kuota internet cabang (video tetap tersimpan di lokal).
+                  </div>
+                </div>
+                <Toggle checked={videoUploadEnabled} onChange={setVideoUploadEnabled} />
+              </div>
+
+              {videoUploadEnabled && (
+                <>
+                  <SettingRow label="Upload Endpoint URL" hint="POST endpoint yang menerima upload file video alert">
+                    <input className="form-input" value={videoUploadUrl} onChange={e => setVideoUploadUrl(e.target.value)} placeholder="https://api.protectqube.ai/api/v1/voice/ai-alerts/file" />
+                  </SettingRow>
+                  <SettingRow label="API Key / Token">
+                    <input type="password" className="form-input" value={videoUploadKey} onChange={e => setVideoUploadKey(e.target.value)} placeholder="Bearer token / API key" />
+                  </SettingRow>
+                  <SettingRow label="Form Field Category" hint="Field text 'category' (default 'detections')">
+                    <input className="form-input" value={videoUploadCategory} onChange={e => setVideoUploadCategory(e.target.value)} placeholder="detections" />
+                  </SettingRow>
+                  <SettingRow label="Response ID Path" hint="Path JSON response untuk mengekstrak video ID (misal 'data.id' atau 'id')">
+                    <input className="form-input" value={videoUploadIdPath} onChange={e => setVideoUploadIdPath(e.target.value)} placeholder="data.id" />
+                  </SettingRow>
+                  <SettingRow label="Upload Timeout (Detik)">
+                    <input type="number" className="form-input" value={videoUploadTimeout} onChange={e => setVideoUploadTimeout(Number(e.target.value))} style={{ width: 120 }} />
+                  </SettingRow>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

@@ -135,6 +135,10 @@ class Alert(Base):
     mqtt_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     mqtt_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     snapshot_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    video_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    video_upload_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    video_upload_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    customer_present: Mapped[bool] = mapped_column(Boolean, default=True)
 
     segment: Mapped["Segment"] = relationship("Segment", back_populates="alert")
 
