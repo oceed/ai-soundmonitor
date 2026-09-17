@@ -781,7 +781,7 @@ function NotificationsTab({ config, onSave, saving }) {
   // Camera Snapshot Settings
   const [cameraEnabled, setCameraEnabled] = useState(config.camera_snapshot_enabled ?? false)
   const [cameraSource, setCameraSource] = useState(config.camera_snapshot_source ?? 'protectqube')
-  const [cameraPqUrl, setCameraPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8000')
+  const [cameraPqUrl, setCameraPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8082')
   const [cameraTimeout, setCameraTimeout] = useState(config.camera_snapshot_timeout ?? 5)
   const [cameraVerdicts, setCameraVerdicts] = useState(config.camera_snapshot_on_verdicts ?? ['FRAUD', 'SUSPICIOUS'])
   const [snapOnNormal, setSnapOnNormal] = useState(config.snapshot_on_normal_conversation ?? false)
@@ -997,7 +997,7 @@ function NotificationsTab({ config, onSave, saving }) {
 
             {cameraSource === 'protectqube' && (
               <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
-                <input className="form-input" value={cameraPqUrl} onChange={e => setCameraPqUrl(e.target.value)} placeholder="http://localhost:8000" />
+                <input className="form-input" value={cameraPqUrl} onChange={e => setCameraPqUrl(e.target.value)} placeholder="http://192.168.1.77:8082" />
               </SettingRow>
             )}
 
