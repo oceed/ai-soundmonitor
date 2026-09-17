@@ -795,6 +795,7 @@ function NotificationsTab({ config, onSave, saving }) {
   const [spatialFilterEnabled, setSpatialFilterEnabled] = useState(config.spatial_customer_filter_enabled ?? false)
   const [spatialFilterMode, setSpatialFilterMode] = useState(config.spatial_customer_filter_mode ?? 'cloud_only')
   const [spatialToleranceSec, setSpatialToleranceSec] = useState(config.spatial_customer_tolerance_seconds ?? 8.0)
+  const [spatialPqUrl, setSpatialPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8082')
 
   // Media Mode: "both", "photo_only", "video_only"
   const [cameraMediaMode, setCameraMediaMode] = useState(config.camera_media_mode ?? 'both')
@@ -846,7 +847,8 @@ function NotificationsTab({ config, onSave, saving }) {
       // Camera Snapshot
       camera_snapshot_enabled: cameraEnabled,
       camera_snapshot_source: cameraSource,
-      camera_snapshot_protectqube_url: cameraPqUrl,
+      // spatialPqUrl and cameraPqUrl share the same config key; use spatialPqUrl as source of truth
+      camera_snapshot_protectqube_url: spatialPqUrl || cameraPqUrl,
       camera_snapshot_timeout: cameraTimeout,
       camera_snapshot_on_verdicts: cameraVerdicts,
       snapshot_on_normal_conversation: snapOnNormal,
@@ -1071,6 +1073,20 @@ function NotificationsTab({ config, onSave, saving }) {
             <div className="form-hint" style={{ marginBottom: 12, padding: '8px 10px', background: 'rgba(56,189,248,0.07)', borderRadius: 6, border: '1px solid rgba(56,189,248,0.2)' }}>
               ℹ️ VoiceGuard secara otomatis menanyakan status keberadaan orang di Customer Service Zone ke ProtectQube AI Engine.
             </div>
+            <SettingRow
+              label="ProtectQube AI URL"
+              hint="URL base endpoint ProtectQube AI yang berjalan di jaringan lokal (contoh: http://192.168.1.77:8082). Pastikan bisa diakses dari backend VoiceGuard."
+            >
+              <input
+                className="form-input"
+                value={spatialPqUrl}
+                onChange={e => {
+                  setSpatialPqUrl(e.target.value)
+                  setCameraPqUrl(e.target.value)
+                }}
+                placeholder="http://192.168.1.77:8082"
+              />
+            </SettingRow>
             <SettingRow label="Filter Mode" hint="Pilih tindakan yang dilakukan jika zona spasial customer kosong saat percakapan mencurigakan terjadi">
               <select className="form-select" value={spatialFilterMode} onChange={e => setSpatialFilterMode(e.target.value)}>
                 <option value="cloud_only">Tahan Pengiriman Cloud / MQTT (Tetap catat di histori lokal)</option>

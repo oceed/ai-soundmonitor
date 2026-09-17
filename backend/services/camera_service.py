@@ -8,6 +8,7 @@ Supports:
 """
 
 import os
+import re
 import time
 import json
 from datetime import datetime
@@ -20,7 +21,7 @@ except ImportError:
     cv2 = None
 
 import urllib.request
-import socket
+import urllib.parse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,91 +29,44 @@ logger = logging.getLogger(__name__)
 
 def _get_candidate_bases(protectqube_url: str, working_base: Optional[str] = None) -> list[str]:
     """
-    Builds an ordered list of candidate URLs to query ProtectQube AI.
-    Prioritizes known working base, then host LAN IP on port 8082, then localhost/docker bridges.
+    Builds an ordered list of candidate base URLs to query ProtectQube AI.
+
+    Strategy:
+    1. Last known working base (fastest path on repeated calls)
+    2. The URL exactly as configured by the user — this is the most important one
+    3. Same host with alternate ports (8082, 8012, 8000)
+    4. Short fallback: 127.0.0.1 variants (same-machine scenario)
+
+    Keeps the list short so failures are fast and logs are clean.
     """
-    import re
-    candidates = []
+    candidates: list[str] = []
 
-    if working_base and working_base not in candidates:
-        candidates.append(working_base)
+    def _add(url: str) -> None:
+        if url and url not in candidates:
+            candidates.append(url)
 
+    # 1. Last known working base
+    if working_base:
+        _add(working_base)
+
+    # 2. Configured URL (exactly as user entered — highest priority)
     base_clean = (protectqube_url or "http://localhost:8082").rstrip("/")
+    _add(base_clean)
 
-    # 1. Detect ALL LAN IPs across all network interfaces (Ethernet, WiFi, etc.)
-    import subprocess
-    lan_ips = []
-    # (a) socket gethostbyname_ex (covers all host interfaces)
-    try:
-        _, _, host_ips = socket.gethostbyname_ex(socket.gethostname())
-        for ip in host_ips:
-            if ip and not ip.startswith("127.") and ip not in lan_ips:
-                lan_ips.append(ip)
-    except Exception:
-        pass
+    # 3. Same host, alternate ports
+    host_match = re.match(r'^(https?://[^:/]+)', base_clean)
+    if host_match:
+        host_part = host_match.group(1)
+        for port in ["8082", "8012", "8000"]:
+            _add(f"{host_part}:{port}")
 
-    # (b) hostname -I (standard on Linux/Debian/Ubuntu)
-    try:
-        out = subprocess.check_output(["hostname", "-I"], text=True, timeout=1)
-        for ip in out.strip().split():
-            ip = ip.strip()
-            if ip and not ip.startswith("127.") and ip not in lan_ips:
-                lan_ips.append(ip)
-    except Exception:
-        pass
-
-    # (c) ip -4 addr show (Linux fallback)
-    try:
-        out = subprocess.check_output(["ip", "-4", "addr", "show"], text=True, timeout=1)
-        found = re.findall(r'inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', out)
-        for ip in found:
-            if ip and not ip.startswith("127.") and ip not in lan_ips:
-                lan_ips.append(ip)
-    except Exception:
-        pass
-
-    # (d) UDP connect fallback
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('10.255.255.255', 1))
-        ip = s.getsockname()[0]
-        s.close()
-        if ip and not ip.startswith("127.") and ip not in lan_ips:
-            lan_ips.append(ip)
-    except Exception:
-        pass
-
-    # Prioritize 192.168.x.x (Ethernet LAN) over other interfaces
-    lan_ips.sort(key=lambda ip: (not ip.startswith("192.168."), ip))
-
-    for extra in ["172.17.0.1", "172.18.0.1", "host.docker.internal"]:
-        if extra not in lan_ips:
-            lan_ips.append(extra)
-
-    # Put host LAN IPs on port 8082 first!
-    for ip in lan_ips:
-        for p in ["8082", "8012"]:
-            cand = f"http://{ip}:{p}"
-            if cand not in candidates:
-                candidates.append(cand)
-
-    # 2. Configured URL with port 8082/8012/8000
-    if re.search(r':(8000|8012|8082)', base_clean):
-        for p in ["8082", "8012", "8000"]:
-            alt = re.sub(r':(8000|8012|8082)', f":{p}", base_clean)
-            if alt not in candidates:
-                candidates.append(alt)
-    elif base_clean not in candidates:
-        candidates.append(base_clean)
-
-    # 3. Localhost and 127.0.0.1
-    for h in ["localhost", "127.0.0.1"]:
-        for p in ["8082", "8012", "8000"]:
-            cand = f"http://{h}:{p}"
-            if cand not in candidates:
-                candidates.append(cand)
+    # 4. Localhost fallback (same machine / host-network scenario)
+    for h in ["127.0.0.1", "localhost"]:
+        for port in ["8082", "8012", "8000"]:
+            _add(f"http://{h}:{port}")
 
     return candidates
+
 
 
 class CameraSnapshotService:
@@ -147,6 +101,7 @@ class CameraSnapshotService:
         now = time.monotonic()
 
         candidate_bases = _get_candidate_bases(protectqube_url, self._working_base)
+        logger.debug(f"[CameraService] Spatial check for {cache_key} — configured URL: {protectqube_url!r} — will try: {candidate_bases[:3]}")
 
         last_err = None
         for cand in candidate_bases:
