@@ -416,24 +416,58 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapsh
                 🎥 VIDEO
               </span>
             )}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+            "{alert.transcript}"
+          </div>
 
-            {alert.customer_present !== undefined && !alert.customer_present && (
+          {/* System & Spatial Status Badges Sub-Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+            {alert.customer_present !== undefined && alert.customer_present !== null && (
               <span
                 className="badge"
                 style={{
-                  fontSize: 9,
-                  background: 'rgba(240,150,20,0.15)',
-                  color: '#f59e0b',
-                  border: '1px solid rgba(240,150,20,0.35)',
+                  fontSize: 8,
+                  padding: '0px 5px',
+                  background: alert.customer_present ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.14)',
+                  color: alert.customer_present ? '#22c55e' : '#f59e0b',
+                  border: `1px solid ${alert.customer_present ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.35)'}`,
                 }}
-                title="Tidak ada nasabah di zona spasial customer — Alert ditahan di lokal dan TIDAK dikirim ke Cloud"
+                title={alert.customer_present ? 'Customer verified present in spatial zone' : 'No customer detected in spatial zone'}
               >
-                ⚠️ NO CUSTOMER (LOCAL ONLY)
+                {alert.customer_present ? '👤 CUSTOMER PRESENT' : '⚠️ NO CUSTOMER'}
               </span>
             )}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            "{alert.transcript}"
+
+            {alert.mqtt_sent === false || (alert.customer_present !== undefined && !alert.customer_present) ? (
+              <span
+                className="badge"
+                style={{
+                  fontSize: 8,
+                  padding: '0px 5px',
+                  background: 'rgba(243,156,18,0.12)',
+                  color: '#f39c12',
+                  border: '1px solid rgba(243,156,18,0.25)',
+                }}
+                title="Held locally (not forwarded to Cloud MQTT)"
+              >
+                🔒 LOCAL ONLY
+              </span>
+            ) : alert.mqtt_sent === true ? (
+              <span
+                className="badge"
+                style={{
+                  fontSize: 8,
+                  padding: '0px 5px',
+                  background: 'rgba(34,197,94,0.12)',
+                  color: '#22c55e',
+                  border: '1px solid rgba(34,197,94,0.3)',
+                }}
+                title="Sent to Cloud MQTT"
+              >
+                ☁️ CLOUD SENT
+              </span>
+            ) : null}
           </div>
         </div>
 

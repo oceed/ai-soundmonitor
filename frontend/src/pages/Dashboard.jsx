@@ -216,57 +216,15 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
         ...(item.verdict === 'FRAUD' ? { boxShadow: '0 0 10px var(--fraud-glow)' } : {}),
       }}
     >
-      {/* Top row: verdict + meta */}
+      {/* Top row: Verdict & Alert Category Flags & Media */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+          {/* Alert Category / Verdict */}
           <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>
             {cfg.icon} {item.classification || item.verdict}
           </span>
-          {(item.is_bypassed || item.llm_mode === 'local_bypass') && (
-            <span
-              className="badge"
-              style={{
-                fontSize: 9,
-                padding: '1px 6px',
-                background: 'rgba(120, 120, 120, 0.14)',
-                color: 'var(--text-muted)',
-                border: '1px solid rgba(140, 140, 140, 0.25)',
-              }}
-              title="Short fragment / closing greeting — LLM bypassed (suppressed from Cloud/MQTT)"
-            >
-              ⚡ SHORT / BYPASS
-            </span>
-          )}
-          {item.customer_present !== undefined && !item.customer_present && (
-            <span
-              className="badge"
-              style={{
-                fontSize: 9,
-                padding: '1px 6px',
-                background: 'rgba(240, 150, 20, 0.15)',
-                color: '#f59e0b',
-                border: '1px solid rgba(240, 150, 20, 0.35)',
-              }}
-              title="Tidak ada nasabah di zona spasial customer — Alert ditahan di lokal dan TIDAK dikirim ke Cloud"
-            >
-              ⚠️ NO CUSTOMER (LOCAL ONLY)
-            </span>
-          )}
-          {item.customer_present === true && (item.verdict === 'FRAUD' || item.verdict === 'SUSPICIOUS') && (
-            <span
-              className="badge"
-              style={{
-                fontSize: 9,
-                padding: '1px 6px',
-                background: 'rgba(34, 197, 94, 0.12)',
-                color: '#22c55e',
-                border: '1px solid rgba(34, 197, 94, 0.3)',
-              }}
-              title="Nasabah terdeteksi di zona spasial customer — Alert dikirim ke Cloud"
-            >
-              ☁️✓ CLOUD SENT
-            </span>
-          )}
+
+          {/* Fraud / Custom Category Flags */}
           {item.flags?.map(f => {
             const cat = categories.find(c => c.key === f);
             const label = cat?.label || f.replace(/_/g, ' ');
@@ -281,6 +239,8 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
               </span>
             );
           })}
+
+          {/* Media Evidence Badges */}
           {item.snapshot_path && (
             <span
               onClick={(e) => { e.stopPropagation(); onSnapshotClick?.(item); }}
@@ -315,37 +275,9 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
               🎥 VIDEO
             </span>
           )}
-          {item.customer_present !== undefined && item.customer_present !== null && (
-            <span
-              className="badge"
-              style={{
-                fontSize: 9,
-                padding: '1px 6px',
-                background: item.customer_present ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)',
-                color: item.customer_present ? '#2ecc71' : '#e74c3c',
-                border: `1px solid ${item.customer_present ? 'rgba(46, 204, 113, 0.25)' : 'rgba(231, 76, 60, 0.25)'}`,
-              }}
-              title={item.customer_present ? 'Customer verified present at desk by Spatial AI' : 'No customer detected at desk during speech'}
-            >
-              {item.customer_present ? '👤 PRESENT' : '⚠️ NO CUSTOMER'}
-            </span>
-          )}
-          {item.mqtt_sent === false && (
-            <span
-              className="badge"
-              style={{
-                fontSize: 9,
-                padding: '1px 6px',
-                background: 'rgba(243, 156, 18, 0.12)',
-                color: '#f39c12',
-                border: '1px solid rgba(243, 156, 18, 0.25)',
-              }}
-              title="Held locally (not forwarded to Cloud MQTT because customer was absent)"
-            >
-              🔒 LOCAL ONLY
-            </span>
-          )}
         </div>
+
+        {/* Latency & Metadata */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {item.stt_ms > 0 && (
             <span style={{ fontSize: 9, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
@@ -358,7 +290,7 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
             </span>
           )}
           <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-            {item.timestamp ? format(new Date(item.timestamp), 'HH:mm:ss') : ''}
+            {item.counter_id ? `[${item.counter_id}]` : ''} {item.timestamp ? format(new Date(item.timestamp), 'HH:mm:ss') : '—'}
           </span>
           {item.has_recording && (
             <button
@@ -442,6 +374,78 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
           </div>
         </div>
       )}
+
+      {/* Bottom Sub-Row: Spatial & Cloud Transport System Status Badges */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--border)', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px', marginRight: 2 }}>
+          Status System:
+        </span>
+
+        {/* Spatial Presence */}
+        {item.customer_present !== undefined && item.customer_present !== null && (
+          <span
+            className="badge"
+            style={{
+              fontSize: 9,
+              padding: '1px 6px',
+              background: item.customer_present ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.14)',
+              color: item.customer_present ? '#22c55e' : '#f59e0b',
+              border: `1px solid ${item.customer_present ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.35)'}`,
+            }}
+            title={item.customer_present ? 'Customer verified present in spatial zone' : 'No customer detected in spatial zone'}
+          >
+            {item.customer_present ? '👤 CUSTOMER PRESENT' : '⚠️ NO CUSTOMER'}
+          </span>
+        )}
+
+        {/* Cloud Transport Status */}
+        {item.mqtt_sent === false || (item.customer_present !== undefined && !item.customer_present) ? (
+          <span
+            className="badge"
+            style={{
+              fontSize: 9,
+              padding: '1px 6px',
+              background: 'rgba(243, 156, 18, 0.12)',
+              color: '#f39c12',
+              border: '1px solid rgba(243, 156, 18, 0.25)',
+            }}
+            title="Held locally (not forwarded to Cloud MQTT)"
+          >
+            🔒 LOCAL ONLY
+          </span>
+        ) : item.mqtt_sent === true || (item.customer_present === true && isBad) ? (
+          <span
+            className="badge"
+            style={{
+              fontSize: 9,
+              padding: '1px 6px',
+              background: 'rgba(34, 197, 94, 0.12)',
+              color: '#22c55e',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+            }}
+            title="Sent to Cloud MQTT"
+          >
+            ☁️ CLOUD SENT
+          </span>
+        ) : null}
+
+        {/* Execution Bypass */}
+        {(item.is_bypassed || item.llm_mode === 'local_bypass') && (
+          <span
+            className="badge"
+            style={{
+              fontSize: 9,
+              padding: '1px 6px',
+              background: 'rgba(120, 120, 120, 0.14)',
+              color: 'var(--text-muted)',
+              border: '1px solid rgba(140, 140, 140, 0.25)',
+            }}
+            title="Short fragment / closing greeting — LLM bypassed"
+          >
+            ⚡ SHORT / BYPASS
+          </span>
+        )}
+      </div>
     </div>
   )
 }
