@@ -3,10 +3,13 @@
 # Base: python:3.11-slim (official multiarch, supports ARM64)
 # ─────────────────────────────────────────────────────────
 
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # System dependencies for PyAudio (ALSA) + audio encoding
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     build-essential \
     portaudio19-dev \
     libasound2-dev \

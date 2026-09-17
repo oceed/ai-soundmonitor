@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ─────────────────────────────────────────────────────────
 # VoiceGuard Fraud Detection — Docker Compose
 # Target: OrangePi 5 Pro (ARM64, Ubuntu/Debian)
