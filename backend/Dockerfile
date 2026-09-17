@@ -5,19 +5,23 @@
 
 FROM python:3.11-slim-bookworm
 
-# System dependencies for PyAudio (ALSA) + audio encoding
+# System dependencies for PyAudio (ALSA) + audio encoding (lean, avoids heavy GUI/Mesa/LLVM)
 RUN echo 'Acquire::http::Pipeline-Depth "0";' > /etc/apt/apt.conf.d/99fixbadproxy \
     && echo 'Acquire::http::No-Cache "true";' >> /etc/apt/apt.conf.d/99fixbadproxy \
     && echo 'Acquire::BrokenProxy "true";' >> /etc/apt/apt.conf.d/99fixbadproxy \
+    && echo 'Acquire::ForceIPv4 "true";' >> /etc/apt/apt.conf.d/99fixbadproxy \
+    && echo 'Acquire::Retries "5";' >> /etc/apt/apt.conf.d/99fixbadproxy \
+    && (sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true) \
+    && (sed -i 's|http://security.debian.org|https://security.debian.org|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true) \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    build-essential \
+    gcc \
+    libc6-dev \
     portaudio19-dev \
     libasound2-dev \
     alsa-utils \
-    ffmpeg \
     libsndfile1 \
     libgomp1 \
     curl \
