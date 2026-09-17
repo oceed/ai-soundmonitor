@@ -20,9 +20,65 @@ except ImportError:
     cv2 = None
 
 import urllib.request
+import socket
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _get_candidate_bases(protectqube_url: str, working_base: Optional[str] = None) -> list[str]:
+    """
+    Builds an ordered list of candidate URLs to query ProtectQube AI.
+    Prioritizes known working base, then host LAN IP on port 8082, then localhost/docker bridges.
+    """
+    import re
+    candidates = []
+
+    if working_base and working_base not in candidates:
+        candidates.append(working_base)
+
+    base_clean = (protectqube_url or "http://localhost:8082").rstrip("/")
+
+    # 1. Detect LAN IP of the host machine (e.g. 192.168.1.77 on Orange Pi)
+    lan_ips = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('10.255.255.255', 1))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and ip not in ("127.0.0.1", "0.0.0.0"):
+            lan_ips.append(ip)
+    except Exception:
+        pass
+
+    for extra in ["172.17.0.1", "host.docker.internal"]:
+        if extra not in lan_ips:
+            lan_ips.append(extra)
+
+    # Put host LAN IP on port 8082 first!
+    for ip in lan_ips:
+        for p in ["8082", "8012"]:
+            cand = f"http://{ip}:{p}"
+            if cand not in candidates:
+                candidates.append(cand)
+
+    # 2. Configured URL with port 8082/8012/8000
+    if re.search(r':(8000|8012|8082)', base_clean):
+        for p in ["8082", "8012", "8000"]:
+            alt = re.sub(r':(8000|8012|8082)', f":{p}", base_clean)
+            if alt not in candidates:
+                candidates.append(alt)
+    elif base_clean not in candidates:
+        candidates.append(base_clean)
+
+    # 3. Localhost and 127.0.0.1
+    for h in ["localhost", "127.0.0.1"]:
+        for p in ["8082", "8012", "8000"]:
+            cand = f"http://{h}:{p}"
+            if cand not in candidates:
+                candidates.append(cand)
+
+    return candidates
 
 
 class CameraSnapshotService:
@@ -33,6 +89,7 @@ class CameraSnapshotService:
         self.videos_dir = self.storage_path / "videos"
         self.videos_dir.mkdir(parents=True, exist_ok=True)
         self._last_customer_seen: Dict[str, float] = {}
+        self._working_base: Optional[str] = None
 
     # ──────────────────────────────────────────────────────
     # Spatial Customer Presence Check
@@ -41,7 +98,7 @@ class CameraSnapshotService:
     def check_customer_presence(
         self,
         counter_info: Dict[str, Any],
-        protectqube_url: str = "http://localhost:8000",
+        protectqube_url: str = "http://localhost:8082",
         tolerance_seconds: float = 8.0,
         timeout: int = 3,
     ) -> bool:
@@ -55,19 +112,7 @@ class CameraSnapshotService:
         cache_key = f"{camera_id}_{zone_id}" if zone_id else camera_id
         now = time.monotonic()
 
-        base_clean = protectqube_url.rstrip("/")
-        # Prioritize port 8082 (ProtectQube AI Gateway/Nginx) before 8012 and 8000
-        import re
-        candidate_bases = []
-        if re.search(r':(8000|8012|8082)', base_clean):
-            for port in ["8082", "8012", "8000"]:
-                alt = re.sub(r':(8000|8012|8082)', f":{port}", base_clean)
-                if alt not in candidate_bases:
-                    candidate_bases.append(alt)
-        else:
-            candidate_bases.append(base_clean)
-            if "localhost" in base_clean or "127.0.0.1" in base_clean or "192.168" in base_clean:
-                candidate_bases.extend(["http://localhost:8082", "http://127.0.0.1:8082", "http://localhost:8012"])
+        candidate_bases = _get_candidate_bases(protectqube_url, self._working_base)
 
         last_err = None
         for cand in candidate_bases:
@@ -82,6 +127,7 @@ class CameraSnapshotService:
                 )
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     if resp.status == 200:
+                        self._working_base = cand
                         data = json.loads(resp.read().decode("utf-8"))
                         is_present = bool(data.get("customer_present", False))
                         active_count = int(data.get("active_customers", 0))
@@ -200,18 +246,7 @@ class CameraSnapshotService:
         # 1. Try ProtectQube API clip first if configured
         if source == "protectqube":
             try:
-                import re
-                bases = [protectqube_url.rstrip("/")]
-                if re.search(r':(8000|8012|8082)', protectqube_url):
-                    for p in ["8082", "8012", "8000"]:
-                        alt = re.sub(r':(8000|8012|8082)', f":{p}", protectqube_url.rstrip("/"))
-                        if alt not in bases:
-                            bases.append(alt)
-                else:
-                    bases.append(protectqube_url.rstrip("/"))
-                    for p in ["8082", "8012"]:
-                        bases.append(f"http://localhost:{p}")
-
+                bases = _get_candidate_bases(protectqube_url, self._working_base)
                 for base_clean in bases:
                     try:
                         url = f"{base_clean}/api/cameras/{camera_id}/clip?duration={duration_s}"
@@ -292,18 +327,7 @@ class CameraSnapshotService:
         self, base_url: str, camera_id: str, timeout: int
     ) -> Optional[bytes]:
         """Fetch snapshot image from ProtectQube AI backend API."""
-        import re
-        bases = [base_url.rstrip("/")]
-        if re.search(r':(8000|8012|8082)', base_url):
-            for p in ["8082", "8012", "8000"]:
-                alt = re.sub(r':(8000|8012|8082)', f":{p}", base_url.rstrip("/"))
-                if alt not in bases:
-                    bases.append(alt)
-        else:
-            bases.append(base_url.rstrip("/"))
-            for p in ["8082", "8012"]:
-                bases.append(f"http://localhost:{p}")
-
+        bases = _get_candidate_bases(base_url, self._working_base)
         for base_clean in bases:
             urls = [
                 f"{base_clean}/api/cameras/{camera_id}/snapshot",
