@@ -325,24 +325,66 @@ class CameraSnapshotService:
             writer.release()
             cap.release()
 
-        # Try ffmpeg post-processing to ensure HTML5/browser H.264 + yuv420p compatibility
         if frame_count > 0 and os.path.exists(output_path):
-            try:
-                import subprocess
-                tmp_out = output_path + ".h264.mp4"
-                res = subprocess.run(
-                    ["ffmpeg", "-y", "-i", output_path, "-vcodec", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", tmp_out],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15
-                )
-                if res.returncode == 0 and os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
-                    os.replace(tmp_out, output_path)
-                    logger.info(f"[CameraService] Successfully converted clip to web-compatible H.264 -> {output_path}")
-                elif os.path.exists(tmp_out):
-                    os.remove(tmp_out)
-            except Exception as e:
-                logger.debug(f"[CameraService] FFmpeg conversion omitted: {e}")
+            convert_video_to_h264(output_path)
 
         return output_path if frame_count > 0 else None
+
+
+def convert_video_to_h264(file_path: os.PathLike | str) -> bool:
+    """Converts a video file to HTML5 browser-compatible H.264 (libx264, yuv420p, +faststart)."""
+    path = Path(file_path)
+    if not path.exists() or path.stat().st_size < 1000:
+        return False
+
+    marker_file = path.with_suffix(path.suffix + ".h264ok")
+    if marker_file.exists():
+        return True
+
+    tmp_out = path.with_suffix(".tmp_h264.mp4")
+    try:
+        import subprocess
+        res = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-profile:v", "baseline", "-level", "3.0",
+                str(tmp_out)
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=25
+        )
+        if res.returncode == 0 and tmp_out.exists() and tmp_out.stat().st_size > 1000:
+            tmp_out.replace(path)
+            try:
+                marker_file.touch()
+            except Exception:
+                pass
+            logger.info(f"[CameraService] Converted video clip to HTML5 H.264 -> {path.name}")
+            return True
+        elif tmp_out.exists():
+            tmp_out.unlink()
+    except Exception as e:
+        logger.debug(f"[CameraService] Video H.264 conversion omitted/failed: {e}")
+        if tmp_out.exists():
+            try:
+                tmp_out.unlink()
+            except Exception:
+                pass
+
+    return False
+
+
+def convert_all_existing_videos(videos_dir: os.PathLike | str) -> None:
+    """Scans videos directory and converts all existing MP4 clips to H.264."""
+    vdir = Path(videos_dir)
+    if not vdir.exists():
+        return
+    for vf in vdir.glob("*.mp4"):
+        if not vf.name.endswith(".tmp_h264.mp4") and not vf.name.endswith(".h264.mp4"):
+            convert_video_to_h264(vf)
 
     # ──────────────────────────────────────────────────────
     # Snapshot Fetch Helpers

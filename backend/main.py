@@ -209,8 +209,10 @@ async def lifespan(app: FastAPI):
     )
     _scheduler.start()
 
-    # Run initial cleanup on startup in background
+    # Run initial cleanup & video H.264 auto-conversion on startup in background
     asyncio.get_event_loop().run_in_executor(None, retention.run_cleanup)
+    from services.camera_service import convert_all_existing_videos, convert_video_to_h264
+    asyncio.get_event_loop().run_in_executor(None, convert_all_existing_videos, Path(settings.storage_path) / "videos")
     logger.info("[Startup] All services started ✓")
 
     yield
@@ -258,13 +260,37 @@ app.include_router(devices_router)
 app.include_router(sessions_router)
 
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+
 snapshots_dir = Path(settings.storage_path) / "snapshots"
 snapshots_dir.mkdir(parents=True, exist_ok=True)
 videos_dir = Path(settings.storage_path) / "videos"
 videos_dir.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/videos/{filename:path}")
+async def serve_video(filename: str):
+    v_dir = Path(settings.storage_path) / "videos"
+    file_path = v_dir / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Video clip not found")
+
+    # On-demand conversion to HTML5 browser-compatible H.264 if needed
+    convert_video_to_h264(file_path)
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="video/mp4",
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 app.mount("/storage", StaticFiles(directory=settings.storage_path), name="storage")
 app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
-app.mount("/videos", StaticFiles(directory=videos_dir), name="videos")
 
 
 # ─────────────────────────────────────────────────────────
