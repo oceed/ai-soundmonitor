@@ -70,6 +70,7 @@ async def init_db() -> None:
             ("alerts", "snapshot_path", "VARCHAR(512)", ""),
             ("alerts", "video_path", "VARCHAR(512)", ""),
             ("alerts", "video_upload_id", "VARCHAR(256)", ""),
+            ("alerts", "video_upload_sent", "BOOLEAN", "0"),
             ("alerts", "customer_present", "BOOLEAN", "1"),
         ]:
             cursor.execute(f"PRAGMA table_info({table})")
