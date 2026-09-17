@@ -741,6 +741,8 @@ class PipelineOrchestrator:
                 "filter_active": filter_short,
                 "timestamp": timestamp.isoformat(),
                 "snapshot_path": snapshot_path,
+                "video_path": video_path,
+                "customer_present": customer_present,
             })
 
             # Normal Conversation Dispatch to MQTT/Cloud (suppressed from Cloud/MQTT only if filter_short is ON & short bypass)

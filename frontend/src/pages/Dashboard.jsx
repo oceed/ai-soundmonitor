@@ -237,6 +237,21 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
               ⚡ SHORT / BYPASS
             </span>
           )}
+          {item.customer_present !== undefined && !item.customer_present && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(240, 150, 20, 0.15)',
+                color: '#f59e0b',
+                border: '1px solid rgba(240, 150, 20, 0.35)',
+              }}
+              title="Tidak ada nasabah di zona spasial customer (Ditahan di lokal, tidak dikirim ke Cloud)"
+            >
+              ⚠️ NO CUSTOMER (LOCAL ONLY)
+            </span>
+          )}
           {item.flags?.map(f => {
             const cat = categories.find(c => c.key === f);
             const label = cat?.label || f.replace(/_/g, ' ');
@@ -266,6 +281,23 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
               title="Camera snapshot captured · Click to view full image"
             >
               📷 SNAPSHOT
+            </span>
+          )}
+          {item.video_path && (
+            <span
+              onClick={(e) => { e.stopPropagation(); onSnapshotClick?.(item); }}
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(56, 189, 248, 0.14)',
+                color: '#38bdf8',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                cursor: 'pointer',
+              }}
+              title="Recorded video clip available · Click to watch video"
+            >
+              🎥 VIDEO
             </span>
           )}
         </div>

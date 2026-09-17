@@ -426,9 +426,9 @@ function AlertRow({ alert, counters = [], expanded, onToggle, onDelete, onSnapsh
                   color: '#f59e0b',
                   border: '1px solid rgba(240,150,20,0.35)',
                 }}
-                title="No customer was detected in the customer spatial zone"
+                title="Tidak ada nasabah di zona spasial customer — Alert ditahan di lokal dan TIDAK dikirim ke Cloud"
               >
-                ⚠️ NO CUSTOMER
+                ⚠️ NO CUSTOMER (LOCAL ONLY)
               </span>
             )}
           </div>
