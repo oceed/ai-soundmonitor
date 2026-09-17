@@ -56,29 +56,48 @@ class CameraSnapshotService:
         now = time.monotonic()
 
         base_clean = protectqube_url.rstrip("/")
-        url = f"{base_clean}/api/spatial/status/{camera_id}"
-        if zone_id:
-            url += f"?zone_id={urllib.parse.quote(zone_id)}"
+        # Candidates to try: configured URL, and automatically probe port 8012/8000 if localhost
+        candidate_bases = [base_clean]
+        if ":8000" in base_clean:
+            candidate_bases.append(base_clean.replace(":8000", ":8012"))
+        elif ":8012" in base_clean:
+            candidate_bases.append(base_clean.replace(":8012", ":8000"))
 
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "VoiceGuard-Spatial-Client"}
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                if resp.status == 200:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    is_present = bool(data.get("customer_present", False))
-                    active_count = int(data.get("active_customers", 0))
+        last_err = None
+        for cand in candidate_bases:
+            url = f"{cand}/api/spatial/status/{camera_id}"
+            if zone_id:
+                url += f"?zone_id={urllib.parse.quote(zone_id)}"
 
-                    if is_present or active_count > 0:
-                        self._last_customer_seen[cache_key] = now
-                        logger.debug(f"[CameraService] Customer present at {cache_key} (active: {active_count})")
-                        return True
-        except Exception as e:
-            logger.debug(f"[CameraService] Spatial status check failed ({cache_key}): {e}")
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "VoiceGuard-Spatial-Client"}
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        is_present = bool(data.get("customer_present", False))
+                        active_count = int(data.get("active_customers", 0))
 
-        # Check if customer was seen within tolerance window (prevents drop during brief turns)
+                        if is_present or active_count > 0:
+                            self._last_customer_seen[cache_key] = now
+                            logger.info(f"[CameraService] Customer detected at {cache_key} (active: {active_count}) via {cand}")
+                            return True
+                        else:
+                            # Successful response indicating no customer currently in zone
+                            last_seen = self._last_customer_seen.get(cache_key, 0.0)
+                            if (now - last_seen) <= tolerance_seconds and last_seen > 0:
+                                logger.debug(f"[CameraService] Customer considered present within tolerance window ({now - last_seen:.1f}s ago)")
+                                return True
+                            return False
+            except Exception as e:
+                last_err = e
+
+        if last_err:
+            logger.warning(f"[CameraService] Spatial check failed for {cache_key} (tried {candidate_bases}): {last_err}")
+
+        # Check tolerance window even if network query errored out
         last_seen = self._last_customer_seen.get(cache_key, 0.0)
         if (now - last_seen) <= tolerance_seconds and last_seen > 0:
             logger.debug(f"[CameraService] Customer considered present within tolerance window ({now - last_seen:.1f}s ago)")

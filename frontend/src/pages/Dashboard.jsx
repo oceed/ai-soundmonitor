@@ -3,7 +3,7 @@ import { AudioVisualizer } from '../components/AudioVisualizer'
 import { SnapshotModal } from '../components/SnapshotModal'
 import { AudioPlayer } from '../components/AudioPlayer'
 import { format } from 'date-fns'
-import { startPipeline, stopPipeline, getSegments, getSessions, getConfig } from '../api/config'
+import { startPipeline, stopPipeline, getSegments, getSessions, getConfig, getSpatialStatus } from '../api/config'
 import { getRecordingStreamUrl, getSnapshotUrl } from '../api/alerts'
 import { useToast } from '../components/NotificationToast'
 
@@ -315,6 +315,36 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
               🎥 VIDEO
             </span>
           )}
+          {item.customer_present !== undefined && item.customer_present !== null && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: item.customer_present ? 'rgba(46, 204, 113, 0.12)' : 'rgba(231, 76, 60, 0.12)',
+                color: item.customer_present ? '#2ecc71' : '#e74c3c',
+                border: `1px solid ${item.customer_present ? 'rgba(46, 204, 113, 0.25)' : 'rgba(231, 76, 60, 0.25)'}`,
+              }}
+              title={item.customer_present ? 'Customer verified present at desk by Spatial AI' : 'No customer detected at desk during speech'}
+            >
+              {item.customer_present ? '👤 PRESENT' : '⚠️ NO CUSTOMER'}
+            </span>
+          )}
+          {item.mqtt_sent === false && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(243, 156, 18, 0.12)',
+                color: '#f39c12',
+                border: '1px solid rgba(243, 156, 18, 0.25)',
+              }}
+              title="Held locally (not forwarded to Cloud MQTT because customer was absent)"
+            >
+              🔒 LOCAL ONLY
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {item.stt_ms > 0 && (
@@ -623,6 +653,45 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
       })
     }
   }, [pipelineStatus])
+
+  // Periodically poll spatial camera presence status for counters
+  useEffect(() => {
+    let isMounted = true
+    const pollSpatial = () => {
+      getSpatialStatus()
+        .then(data => {
+          if (!isMounted || !data?.counters) return
+          setCountersState(prev => {
+            let changed = false
+            const next = { ...prev }
+            Object.keys(data.counters).forEach(cId => {
+              const info = data.counters[cId]
+              if (next[cId]) {
+                if (next[cId].customer_present !== info.customer_present ||
+                    next[cId].spatial_camera_id !== info.camera_id) {
+                  next[cId] = {
+                    ...next[cId],
+                    customer_present: info.customer_present,
+                    spatial_camera_id: info.camera_id,
+                    spatial_error: info.error,
+                  }
+                  changed = true
+                }
+              }
+            })
+            return changed ? next : prev
+          })
+        })
+        .catch(() => {})
+    }
+
+    pollSpatial()
+    const timer = setInterval(pollSpatial, 3500)
+    return () => {
+      isMounted = false
+      clearInterval(timer)
+    }
+  }, [])
 
   // Load initial segment history for each counter
   useEffect(() => {
@@ -1020,6 +1089,59 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                   }}>{c.running ? 'ACTIVE' : 'OFFLINE'}</span>
                 </div>
 
+                {/* Spatial Customer Presence Indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10 }}>
+                  {c.customer_present === true ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      color: '#2ecc71',
+                      background: 'rgba(46, 204, 113, 0.12)',
+                      border: '1px solid rgba(46, 204, 113, 0.25)',
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      fontWeight: 600,
+                      fontSize: 9,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2ecc71', display: 'inline-block' }} />
+                      👤 Nasabah Ada
+                    </span>
+                  ) : c.customer_present === false ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      color: '#e74c3c',
+                      background: 'rgba(231, 76, 60, 0.12)',
+                      border: '1px solid rgba(231, 76, 60, 0.25)',
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      fontWeight: 600,
+                      fontSize: 9,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#e74c3c', display: 'inline-block' }} />
+                      ⚠️ Meja Kosong
+                    </span>
+                  ) : (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      color: 'var(--text-dim)',
+                      fontSize: 9,
+                    }}>
+                      {c.spatial_camera_id ? `📷 Cam: ${c.spatial_camera_id}` : '📷 No Cam'}
+                    </span>
+                  )}
+
+                  {c.spatial_camera_id && (
+                    <span style={{ fontSize: 8, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                      CAM #{c.spatial_camera_id}
+                    </span>
+                  )}
+                </div>
+
                 {/* Real-time VU Levels */}
                 <div style={{
                   height: 22,
@@ -1163,10 +1285,25 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         <div className="dashboard-left-panel">
           {/* Audio Visualizer card (Active counter or generic) */}
           <div className="card" style={{ padding: '14px 16px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', marginBottom: 10 }}>
-              <span className="section-label">
-                Audio Visualizer {focusedCounter ? `(${focusedCounter.name})` : '(Combined Overview)'}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="section-label">
+                  Audio Visualizer {focusedCounter ? `(${focusedCounter.name})` : '(Combined Overview)'}
+                </span>
+                {focusedCounter && focusedCounter.customer_present !== undefined && focusedCounter.customer_present !== null && (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: focusedCounter.customer_present ? 'rgba(46, 204, 113, 0.15)' : 'rgba(231, 76, 60, 0.15)',
+                    color: focusedCounter.customer_present ? '#2ecc71' : '#e74c3c',
+                    border: `1px solid ${focusedCounter.customer_present ? 'rgba(46, 204, 113, 0.3)' : 'rgba(231, 76, 60, 0.3)'}`
+                  }}>
+                    {focusedCounter.customer_present ? '👤 Nasabah Terdeteksi' : '⚠️ Meja Kosong'}
+                  </span>
+                )}
+              </div>
               <VadIndicator vadState={focusedCounter ? focusedCounter.vadState : 'silence'} />
             </div>
             <AudioVisualizer

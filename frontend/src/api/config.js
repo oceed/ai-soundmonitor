@@ -20,6 +20,9 @@ export const resetConfig = () =>
 export const getAudioDevices = () =>
   client.get('/api/devices/audio').then(r => r.data)
 
+export const getSpatialStatus = () =>
+  client.get('/api/devices/spatial-status').then(r => r.data)
+
 export const getPipelineStatus = () =>
   client.get('/api/pipeline/status').then(r => r.data)
 
