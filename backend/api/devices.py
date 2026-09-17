@@ -38,6 +38,8 @@ async def get_counters_spatial_status(
 
     cam_svc = CameraService()
     counters = runtime_config.get("counters", [])
+    if not counters:
+        counters = [{"id": "default", "name": "Default Counter"}]
     protectqube_url = runtime_config.get("camera_snapshot_protectqube_url", "http://localhost:8012")
     tol_sec = float(runtime_config.get("spatial_customer_tolerance_seconds", 8.0))
     spatial_enabled = bool(runtime_config.get("spatial_customer_filter_enabled", False))
@@ -50,15 +52,28 @@ async def get_counters_spatial_status(
             c_id = c.get("id")
             if not c_id:
                 continue
+            cam_id = str(c.get("camera_id") or runtime_config.get("camera_snapshot_camera_id") or "").strip()
+            if not cam_id:
+                results[c_id] = {
+                    "customer_present": None,
+                    "camera_id": "",
+                    "zone_id": "",
+                    "spatial_enabled": spatial_enabled,
+                    "error": "No camera linked to counter",
+                }
+                continue
+
+            counter_copy = dict(c)
+            counter_copy["camera_id"] = cam_id
             is_present = cam_svc.check_customer_presence(
-                counter_info=c,
+                counter_info=counter_copy,
                 protectqube_url=protectqube_url,
                 tolerance_seconds=tol_sec,
                 timeout=2,
             )
             results[c_id] = {
                 "customer_present": is_present,
-                "camera_id": c.get("camera_id", ""),
+                "camera_id": cam_id,
                 "zone_id": c.get("zone_id", ""),
                 "spatial_enabled": spatial_enabled,
             }

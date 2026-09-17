@@ -142,13 +142,22 @@ async def websocket_endpoint(
     try:
         # Send welcome + current status
         from main import get_orchestrator, get_orchestrators  # avoid circular import
+        from config import runtime_config
         orch_map = get_orchestrators()
+        counters = runtime_config.get("counters", [])
+        if not counters:
+            counters = [{"id": "default", "name": "Default Counter"}]
         status_map = {}
-        for c_id, orch in orch_map.items():
+        for c in counters:
+            c_id = c["id"]
+            orch = orch_map.get(c_id)
             status_map[c_id] = {
                 "id": c_id,
-                "running": orch.is_running,
-                "stats": orch.stats
+                "name": c.get("name", c_id),
+                "camera_id": c.get("camera_id", ""),
+                "zone_id": c.get("zone_id", ""),
+                "running": orch.is_running if orch else False,
+                "stats": orch.stats if orch else {}
             }
         orch = get_orchestrator()
         await websocket.send_json({

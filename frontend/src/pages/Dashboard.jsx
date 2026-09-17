@@ -597,18 +597,20 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
           setCountersState(prev => {
             const newState = { ...prev }
             cfg.counters.forEach(c => {
-              if (!newState[c.id]) {
-                newState[c.id] = {
-                  id: c.id,
-                  name: c.name,
-                  running: false,
-                  active_mic_name: '',
-                  rms: 0,
-                  vadState: 'silence',
-                  lastVerdict: null,
-                  stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
-                  feed: [],
-                }
+              const existing = newState[c.id] || {
+                running: false,
+                active_mic_name: '',
+                rms: 0,
+                vadState: 'silence',
+                lastVerdict: null,
+                stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+                feed: [],
+              }
+              newState[c.id] = {
+                ...existing,
+                id: c.id,
+                name: c.name,
+                spatial_camera_id: c.camera_id || '',
               }
             })
             return newState
@@ -638,6 +640,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             ...existing,
             id: cId,
             name: c.name || cId,
+            spatial_camera_id: c.camera_id || existing.spatial_camera_id || '',
             running: c.running,
             active_mic_name: c.stats?.active_mic_name || '',
             stats: {
@@ -666,17 +669,27 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
             const next = { ...prev }
             Object.keys(data.counters).forEach(cId => {
               const info = data.counters[cId]
-              if (next[cId]) {
-                if (next[cId].customer_present !== info.customer_present ||
-                    next[cId].spatial_camera_id !== info.camera_id) {
-                  next[cId] = {
-                    ...next[cId],
-                    customer_present: info.customer_present,
-                    spatial_camera_id: info.camera_id,
-                    spatial_error: info.error,
-                  }
-                  changed = true
+              const existing = next[cId] || {
+                id: cId,
+                name: cId,
+                running: false,
+                rms: 0,
+                vadState: 'silence',
+                lastVerdict: null,
+                stats: { FRAUD: 0, SUSPICIOUS: 0, NORMAL: 0, segments: 0 },
+                feed: [],
+              }
+              if (
+                existing.customer_present !== info.customer_present ||
+                existing.spatial_camera_id !== info.camera_id
+              ) {
+                next[cId] = {
+                  ...existing,
+                  customer_present: info.customer_present,
+                  spatial_camera_id: info.camera_id || existing.spatial_camera_id || '',
+                  spatial_error: info.error,
                 }
+                changed = true
               }
             })
             return changed ? next : prev

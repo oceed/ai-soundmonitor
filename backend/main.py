@@ -348,6 +348,8 @@ async def pipeline_status(_: User = Depends(get_current_user)):
                 "id": c_id,
                 "name": c["name"],
                 "enabled": c.get("enabled", True),
+                "camera_id": c.get("camera_id", ""),
+                "zone_id": c.get("zone_id", ""),
                 "running": orch.is_running,
                 "stats": orch.stats,
             }
@@ -356,6 +358,8 @@ async def pipeline_status(_: User = Depends(get_current_user)):
                 "id": c_id,
                 "name": c["name"],
                 "enabled": c.get("enabled", True),
+                "camera_id": c.get("camera_id", ""),
+                "zone_id": c.get("zone_id", ""),
                 "running": False,
                 "stats": {},
             }

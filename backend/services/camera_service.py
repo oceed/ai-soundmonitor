@@ -56,12 +56,14 @@ class CameraSnapshotService:
         now = time.monotonic()
 
         base_clean = protectqube_url.rstrip("/")
-        # Candidates to try: configured URL, and automatically probe port 8012/8000 if localhost
-        candidate_bases = [base_clean]
-        if ":8000" in base_clean:
-            candidate_bases.append(base_clean.replace(":8000", ":8012"))
-        elif ":8012" in base_clean:
-            candidate_bases.append(base_clean.replace(":8012", ":8000"))
+        # Prioritize port 8012 (ProtectQube AI on edge node) before port 8000 (rkllama)
+        if ":8000" in base_clean or ":8012" in base_clean:
+            candidate_bases = [
+                base_clean.replace(":8000", ":8012"),
+                base_clean.replace(":8012", ":8000"),
+            ]
+        else:
+            candidate_bases = [base_clean]
 
         last_err = None
         for cand in candidate_bases:
