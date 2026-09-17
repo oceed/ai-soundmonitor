@@ -247,9 +247,24 @@ function FeedItem({ item, isNew, onPlayClick, onSnapshotClick, categories = [] }
                 color: '#f59e0b',
                 border: '1px solid rgba(240, 150, 20, 0.35)',
               }}
-              title="Tidak ada nasabah di zona spasial customer (Ditahan di lokal, tidak dikirim ke Cloud)"
+              title="Tidak ada nasabah di zona spasial customer — Alert ditahan di lokal dan TIDAK dikirim ke Cloud"
             >
               ⚠️ NO CUSTOMER (LOCAL ONLY)
+            </span>
+          )}
+          {item.customer_present === true && (item.verdict === 'FRAUD' || item.verdict === 'SUSPICIOUS') && (
+            <span
+              className="badge"
+              style={{
+                fontSize: 9,
+                padding: '1px 6px',
+                background: 'rgba(34, 197, 94, 0.12)',
+                color: '#22c55e',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+              }}
+              title="Nasabah terdeteksi di zona spasial customer — Alert dikirim ke Cloud"
+            >
+              ☁️✓ CLOUD SENT
             </span>
           )}
           {item.flags?.map(f => {
@@ -653,6 +668,9 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                 has_recording: s.has_recording,
                 alert_id: s.alert_id,
                 snapshot_path: s.snapshot_path,
+                video_path: s.video_path,
+                customer_present: s.customer_present,
+                mqtt_sent: s.mqtt_sent,
               })
             })
             return newState
@@ -698,19 +716,22 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
         case 'segment_result':
           updated.lastVerdict = event.verdict
           updated.feed = [{
-            id:             event.segment_id || Date.now(),
-            timestamp:      event.timestamp || new Date().toISOString(),
-            verdict:        event.verdict,
-            classification: event.classification || event.verdict,
-            confidence:     event.confidence,
-            transcript:     event.transcript,
-            reason:         event.reason,
-            flags:          event.flags || [],
-            stt_ms:         event.stt_ms,
-            llm_ms:         event.llm_ms,
-            has_recording:  false,
-            alert_id:       null,
-            snapshot_path:  event.snapshot_path,
+            id:               event.segment_id || Date.now(),
+            timestamp:        event.timestamp || new Date().toISOString(),
+            verdict:          event.verdict,
+            classification:   event.classification || event.verdict,
+            confidence:       event.confidence,
+            transcript:       event.transcript,
+            reason:           event.reason,
+            flags:            event.flags || [],
+            stt_ms:           event.stt_ms,
+            llm_ms:           event.llm_ms,
+            has_recording:    false,
+            alert_id:         null,
+            snapshot_path:    event.snapshot_path,
+            video_path:       event.video_path,
+            customer_present: event.customer_present,
+            is_bypassed:      event.is_bypassed,
           }, ...current.feed].slice(0, MAX_FEED)
 
           updated.stats = {
@@ -722,7 +743,14 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
 
         case 'alert':
           updated.feed = current.feed.map(item =>
-            item.id === event.segment_id ? { ...item, alert_id: event.alert_id, snapshot_path: event.snapshot_path || item.snapshot_path } : item
+            item.id === event.segment_id ? {
+              ...item,
+              alert_id: event.alert_id,
+              snapshot_path: event.snapshot_path || item.snapshot_path,
+              video_path: event.video_path || item.video_path,
+              customer_present: event.customer_present !== undefined ? event.customer_present : item.customer_present,
+              mqtt_sent: event.customer_present !== false,
+            } : item
           )
           addToast({
             type:     event.verdict === 'FRAUD' ? 'fraud' : 'warning',

@@ -94,6 +94,8 @@ class Segment(Base):
     stt_mode_used: Mapped[str] = mapped_column(String(16), default="")
     llm_mode_used: Mapped[str] = mapped_column(String(16), default="")
     snapshot_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    video_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    customer_present: Mapped[bool] = mapped_column(Boolean, default=True)
 
     session: Mapped["RecordingSession"] = relationship("RecordingSession", back_populates="segments")
     alert: Mapped[Optional["Alert"]] = relationship("Alert", back_populates="segment", uselist=False)

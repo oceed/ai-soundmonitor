@@ -716,6 +716,8 @@ class PipelineOrchestrator:
                 llm_mode=fraud_result.mode_used,
                 counter_id=self._counter_id,
                 snapshot_path=snapshot_path,
+                video_path=video_path,
+                customer_present=customer_present,
             )
 
             # Broadcast result to local dashboard (includes is_bypassed flag)
@@ -745,12 +747,14 @@ class PipelineOrchestrator:
                 "customer_present": customer_present,
             })
 
-            # Normal Conversation Dispatch to MQTT/Cloud (suppressed from Cloud/MQTT only if filter_short is ON & short bypass)
+            # Normal Conversation Dispatch to MQTT/Cloud (suppressed if short bypass OR if no customer in spatial zone)
             send_normal_mqtt = bool(self._rc.get("send_normal_conversations_to_mqtt", False))
             send_normal_cloud = bool(self._rc.get("send_normal_conversations_to_cloud", False))
             if classification == "NORMAL" and (send_normal_mqtt or send_normal_cloud) and self._mqtt:
                 if filter_short and is_short_bypass:
                     logger.debug(f"[Orchestrator] Segment #{seg_no} suppressed from Cloud/MQTT (filter ON & short bypass: '{stt.text}')")
+                elif spatial_filter_enabled and not customer_present:
+                    logger.info(f"[Spatial Filter] Normal Event {segment_id} suppressed from Cloud/MQTT: No customer present in zone")
                 else:
                     try:
                         snapshot_unique_id = None

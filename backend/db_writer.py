@@ -103,6 +103,8 @@ class DBWriter:
         llm_mode: str,
         counter_id: str = "default",
         snapshot_path: Optional[str] = None,
+        video_path: Optional[str] = None,
+        customer_present: bool = True,
     ) -> int:
         with self._session() as s:
             seg = Segment(
@@ -122,6 +124,8 @@ class DBWriter:
                 llm_mode_used=llm_mode,
                 counter_id=counter_id,
                 snapshot_path=snapshot_path,
+                video_path=video_path,
+                customer_present=customer_present,
             )
             s.add(seg)
             s.commit()

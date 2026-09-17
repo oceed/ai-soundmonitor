@@ -67,6 +67,8 @@ async def init_db() -> None:
             ("segments", "counter_id", "VARCHAR(64)", "default"),
             ("alerts", "counter_id", "VARCHAR(64)", "default"),
             ("segments", "snapshot_path", "VARCHAR(512)", ""),
+            ("segments", "video_path", "VARCHAR(512)", ""),
+            ("segments", "customer_present", "BOOLEAN", "1"),
             ("alerts", "snapshot_path", "VARCHAR(512)", ""),
             ("alerts", "video_path", "VARCHAR(512)", ""),
             ("alerts", "video_upload_id", "VARCHAR(256)", ""),
