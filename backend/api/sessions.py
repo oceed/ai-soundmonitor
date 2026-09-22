@@ -101,6 +101,7 @@ async def list_segments(
                 "stt_mode": s.stt_mode_used,
                 "llm_mode": s.llm_mode_used,
                 "snapshot_path": s.snapshot_path,
+                "snapshot_bbox_path": getattr(s, "snapshot_bbox_path", None) or (s.alert.snapshot_bbox_path if s.alert else None),
                 "video_path": getattr(s, "video_path", None) or (s.alert.video_path if s.alert else None),
                 "customer_present": getattr(s, "customer_present", True) if getattr(s, "customer_present", None) is not None else (s.alert.customer_present if s.alert else True),
                 "mqtt_sent": s.alert.mqtt_sent if s.alert else False,

@@ -321,6 +321,10 @@ class PipelineOrchestrator:
                     max_segment_duration=self._rc.get("vad_max_segment_duration", self._settings.vad_max_segment_duration),
                     use_silero=self._rc.get("vad_use_silero", False),
                     auto_calibrate=self._rc.get("vad_auto_calibrate", True),
+                    operating_hours_enabled=self._rc.get("operating_hours_enabled", False),
+                    operating_hours_start=self._rc.get("operating_hours_start", "08:00"),
+                    operating_hours_end=self._rc.get("operating_hours_end", "17:00"),
+                    operating_hours_days=self._rc.get("operating_hours_days", [0, 1, 2, 3, 4, 5]),
                 )
 
     @property
@@ -415,6 +419,10 @@ class PipelineOrchestrator:
             max_segment_duration=rc.get("vad_max_segment_duration", s.vad_max_segment_duration),
             vad_use_silero=rc.get("vad_use_silero", False),
             vad_auto_calibrate=rc.get("vad_auto_calibrate", True),
+            operating_hours_enabled=rc.get("operating_hours_enabled", False),
+            operating_hours_start=rc.get("operating_hours_start", "08:00"),
+            operating_hours_end=rc.get("operating_hours_end", "17:00"),
+            operating_hours_days=rc.get("operating_hours_days", [0, 1, 2, 3, 4, 5]),
         )
 
     def _init_mqtt(self) -> None:
@@ -670,15 +678,24 @@ class PipelineOrchestrator:
             )
 
             snapshot_path = None
+            snapshot_bbox_path = None
             if should_snapshot and self._camera_service:
                 try:
-                    snapshot_path = self._camera_service.capture_snapshot(
+                    snap_res = self._camera_service.capture_snapshot(
                         counter_info=counter_info,
                         source=self._rc.get("camera_snapshot_source", "protectqube"),
                         protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000"),
                         timeout=int(self._rc.get("camera_snapshot_timeout", 5)),
                         verdict=classification,
                     )
+                    if isinstance(snap_res, dict):
+                        snapshot_path = snap_res.get("snapshot_path")
+                        snapshot_bbox_path = snap_res.get("snapshot_bbox_path")
+                    elif isinstance(snap_res, (tuple, list)):
+                        snapshot_path = snap_res[0] if len(snap_res) > 0 else None
+                        snapshot_bbox_path = snap_res[1] if len(snap_res) > 1 else None
+                    else:
+                        snapshot_path = snap_res
                 except Exception as snap_err:
                     logger.error(f"[Orchestrator] Error capturing snapshot: {snap_err}")
 
@@ -716,6 +733,7 @@ class PipelineOrchestrator:
                 llm_mode=fraud_result.mode_used,
                 counter_id=self._counter_id,
                 snapshot_path=snapshot_path,
+                snapshot_bbox_path=snapshot_bbox_path,
                 video_path=video_path,
                 customer_present=customer_present,
             )
@@ -743,6 +761,7 @@ class PipelineOrchestrator:
                 "filter_active": filter_short,
                 "timestamp": timestamp.isoformat(),
                 "snapshot_path": snapshot_path,
+                "snapshot_bbox_path": snapshot_bbox_path,
                 "video_path": video_path,
                 "customer_present": customer_present,
             })
@@ -830,6 +849,7 @@ class PipelineOrchestrator:
                     duration_s=item["duration_s"],
                     pcm=item.get("pcm"),
                     snapshot_path=snapshot_path,
+                    snapshot_bbox_path=snapshot_bbox_path,
                     video_path=video_path,
                     customer_present=customer_present,
                 )
@@ -842,7 +862,7 @@ class PipelineOrchestrator:
     # Alert Handler
     # ──────────────────────────────────────────────────────
 
-    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None, snapshot_path=None, video_path=None, customer_present=True) -> None:
+    def _handle_alert(self, segment_id, segment_no, timestamp, start_mono, end_mono, fraud_result, stt, duration_s, pcm=None, snapshot_path=None, snapshot_bbox_path=None, video_path=None, customer_present=True) -> None:
         logger.info(
             f"[Alert] Segment #{segment_no}: {fraud_result.classification} "
             f"({fraud_result.confidence}%) — {fraud_result.reason[:60]}"
@@ -859,6 +879,7 @@ class PipelineOrchestrator:
             post_buffer_s=self._rc.get("post_buffer_seconds", 15.0),
             counter_id=self._counter_id,
             snapshot_path=snapshot_path,
+            snapshot_bbox_path=snapshot_bbox_path,
             video_path=video_path,
             customer_present=customer_present,
         )
@@ -877,6 +898,7 @@ class PipelineOrchestrator:
             "timestamp": timestamp.isoformat(),
             "has_recording": False,
             "snapshot_path": snapshot_path,
+            "snapshot_bbox_path": snapshot_bbox_path,
             "video_path": video_path,
             "customer_present": customer_present,
         })

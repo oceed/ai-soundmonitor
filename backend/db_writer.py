@@ -103,6 +103,7 @@ class DBWriter:
         llm_mode: str,
         counter_id: str = "default",
         snapshot_path: Optional[str] = None,
+        snapshot_bbox_path: Optional[str] = None,
         video_path: Optional[str] = None,
         customer_present: bool = True,
     ) -> int:
@@ -124,6 +125,7 @@ class DBWriter:
                 llm_mode_used=llm_mode,
                 counter_id=counter_id,
                 snapshot_path=snapshot_path,
+                snapshot_bbox_path=snapshot_bbox_path,
                 video_path=video_path,
                 customer_present=customer_present,
             )
@@ -131,11 +133,13 @@ class DBWriter:
             s.commit()
             return seg.id
 
-    def update_segment_snapshot(self, segment_id: int, snapshot_path: str) -> None:
+    def update_segment_snapshot(self, segment_id: int, snapshot_path: str, snapshot_bbox_path: Optional[str] = None) -> None:
         with self._session() as s:
             seg = s.get(Segment, segment_id)
             if seg:
                 seg.snapshot_path = snapshot_path
+                if snapshot_bbox_path:
+                    seg.snapshot_bbox_path = snapshot_bbox_path
                 s.commit()
 
     def get_recent_segments(
@@ -196,6 +200,7 @@ class DBWriter:
         post_buffer_s: float,
         counter_id: str = "default",
         snapshot_path: Optional[str] = None,
+        snapshot_bbox_path: Optional[str] = None,
         video_path: Optional[str] = None,
         customer_present: bool = True,
     ) -> int:
@@ -215,6 +220,7 @@ class DBWriter:
                 post_buffer_s=post_buffer_s,
                 counter_id=counter_id,
                 snapshot_path=snapshot_path,
+                snapshot_bbox_path=snapshot_bbox_path,
                 video_path=video_path,
                 customer_present=customer_present,
             )
@@ -222,11 +228,13 @@ class DBWriter:
             s.commit()
             return alert.id
 
-    def update_alert_snapshot(self, alert_id: int, snapshot_path: str) -> None:
+    def update_alert_snapshot(self, alert_id: int, snapshot_path: str, snapshot_bbox_path: Optional[str] = None) -> None:
         with self._session() as s:
             alert = s.get(Alert, alert_id)
             if alert:
                 alert.snapshot_path = snapshot_path
+                if snapshot_bbox_path:
+                    alert.snapshot_bbox_path = snapshot_bbox_path
                 s.commit()
 
     def update_alert_video(self, alert_id: int, video_path: str) -> None:

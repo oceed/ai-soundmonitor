@@ -560,14 +560,19 @@ function PlaybackModal({ item, onClose, onSnapshotClick }) {
 
 /* ─── VAD indicator ─── */
 function VadIndicator({ vadState }) {
-  const s = vadState === 'speech'
-    ? { label: 'Speech Detected', color: 'var(--clear)', pulse: true }
-    : { label: 'Silence / Background', color: 'var(--text-muted)', pulse: false }
+  let s
+  if (vadState === 'speech') {
+    s = { label: 'Speech Detected', color: 'var(--clear)', dotClass: 'status-dot-green status-dot-pulse' }
+  } else if (vadState === 'off_hours' || vadState === 'standby') {
+    s = { label: '💤 Standby (Luar Jam Operasional)', color: '#94a3b8', dotClass: 'status-dot-gray' }
+  } else {
+    s = { label: 'Silence / Background', color: 'var(--text-muted)', dotClass: 'status-dot-gray' }
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <div
-        className={`status-dot ${s.pulse ? 'status-dot-green status-dot-pulse' : 'status-dot-gray'}`}
+        className={`status-dot ${s.dotClass}`}
         style={{ width: 7, height: 7 }}
       />
       <span style={{ fontSize: 11, fontWeight: 600, color: s.color, transition: 'color 0.2s' }}>
@@ -1173,7 +1178,7 @@ export function Dashboard({ liveEvents, pipelineStatus }) {
                   overflow: 'hidden'
                 }}>
                   <span style={{ color: 'var(--text-secondary)', zIndex: 2, fontSize: 9 }}>
-                    {c.running ? (c.vadState === 'speech' ? '🎙️ Speech' : 'Silence') : 'Offline'}
+                    {c.running ? (c.vadState === 'speech' ? '🎙️ Speech' : c.vadState === 'off_hours' ? '💤 Standby' : 'Silence') : 'Offline'}
                   </span>
                   {c.running && (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)', zIndex: 2 }}>

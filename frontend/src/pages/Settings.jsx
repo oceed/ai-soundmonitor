@@ -253,6 +253,32 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
   const [showHardware, setShowHardware] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Operating Hours (Jam Operasional)
+  const [opHoursEnabled, setOpHoursEnabled] = useState(config.operating_hours_enabled ?? false)
+  const [opHoursStart, setOpHoursStart] = useState(config.operating_hours_start ?? '08:00')
+  const [opHoursEnd, setOpHoursEnd] = useState(config.operating_hours_end ?? '17:00')
+  const [opHoursDays, setOpHoursDays] = useState(
+    Array.isArray(config.operating_hours_days)
+      ? config.operating_hours_days
+      : [0, 1, 2, 3, 4, 5]
+  )
+
+  const toggleDay = (dayIdx) => {
+    setOpHoursDays(prev =>
+      prev.includes(dayIdx) ? prev.filter(d => d !== dayIdx) : [...prev, dayIdx].sort((a, b) => a - b)
+    )
+  }
+
+  const DAYS_LIST = [
+    { idx: 0, label: 'Senin' },
+    { idx: 1, label: 'Selasa' },
+    { idx: 2, label: 'Rabu' },
+    { idx: 3, label: 'Kamis' },
+    { idx: 4, label: 'Jumat' },
+    { idx: 5, label: 'Sabtu' },
+    { idx: 6, label: 'Minggu' },
+  ]
+
   const handleRefresh = async (e) => {
     e.preventDefault()
     setRefreshing(true)
@@ -273,45 +299,44 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
               background: 'rgba(34,197,94,0.15)', color: '#22c55e',
               border: '1px solid rgba(34,197,94,0.3)',
             }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%', background: '#22c55e',
-                animation: 'pulse 2s infinite',
-              }} />
-              LIVE
+              ● AUTO-DETECT ACTIVE
             </span>
           </div>
-          <div className="form-hint">Device list updates automatically when you plug or unplug a USB microphone.</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Primary microphone input device for voice transcription and fraud monitoring.
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-          <select className="form-select" value={deviceIndex} onChange={e => setDeviceIndex(Number(e.target.value))} style={{ flex: 1 }}>
-            <option value={-1}>Auto-detect</option>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <select
+            className="form-select"
+            value={deviceIndex}
+            onChange={e => setDeviceIndex(Number(e.target.value))}
+            style={{ flex: 1 }}
+          >
+            <option value={-1}>System Default (Auto-detect OBSBOT / USB mic)</option>
             {devices.map(d => (
-              <option key={d.index} value={d.index}>{d.index}: {d.name}</option>
+              <option key={d.index} value={d.index}>
+                [{d.index}] {d.name} ({d.max_input_channels}ch, {d.default_sample_rate}Hz)
+              </option>
             ))}
           </select>
           <button
-            className="btn btn-ghost"
+            className="btn btn-ghost btn-sm"
             onClick={handleRefresh}
             disabled={refreshing}
-            title="Refresh device list"
-            style={{
-              padding: '0 12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 16,
-              flexShrink: 0
-            }}
+            title="Scan for new devices"
+            style={{ flexShrink: 0, padding: '6px 12px' }}
           >
-            {refreshing ? <span className="spinner" style={{ width: 14, height: 14 }} /> : '↻'}
+            {refreshing ? '⟳ …' : '⟳ Refresh'}
           </button>
         </div>
 
         <SettingRow label="VAD Mode" hint="Silero VAD uses a neural network to detect actual speech. Energy VAD uses volume (RMS) threshold.">
           <select className="form-select" value={useSilero ? 'silero' : 'energy'} onChange={e => {
-            const val = e.target.value === 'silero'
-            setUseSilero(val)
-            if (val) setAutoCalibrate(false)
+            const isSilero = e.target.value === 'silero'
+            setUseSilero(isSilero)
+            if (isSilero) setAutoCalibrate(false)
           }}>
             <option value="energy">Energy VAD (RMS threshold)</option>
             <option value="silero">Silero VAD (ONNX Neural Net)</option>
@@ -325,10 +350,28 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
         )}
 
         {!useSilero && !autoCalibrate && (
-          <SettingRow label="VAD Threshold (RMS)" hint="Energy level to detect speech. Increase in noisy environments">
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="range" min={50} max={1000} step={10} value={threshold} onChange={e => setThreshold(Number(e.target.value))} style={{ flex: 1 }} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, minWidth: 40 }}>{threshold}</span>
+          <SettingRow label="VAD Threshold (RMS)" hint="Energy level to detect speech. Increase in noisy environments (e.g. 1500 - 5000+).">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <input
+                type="range"
+                min={50}
+                max={10000}
+                step={25}
+                value={Math.min(threshold, 10000)}
+                onChange={e => setThreshold(Number(e.target.value))}
+                style={{ flex: 1 }}
+              />
+              <input
+                type="number"
+                className="form-input"
+                min={10}
+                max={32767}
+                step={25}
+                value={threshold}
+                onChange={e => setThreshold(Number(e.target.value))}
+                style={{ width: 85, fontFamily: 'var(--font-mono)', fontSize: 13, textAlign: 'right' }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>RMS</span>
             </div>
           </SettingRow>
         )}
@@ -403,6 +446,84 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
             </SettingRow>
           </div>
         )}
+      </div>
+
+      {/* Operating Hours (Jam Operasional) Card */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🕒</span> Jam Operasional (Operating Hours)
+            </h3>
+            <div className="form-hint" style={{ marginTop: 4 }}>
+              Mikrofon akan otomatis standby/jeda di luar jam kerja (menghemat pemrosesan CPU & menjaga privasi) dan otomatis aktif kembali saat jam kerja.
+            </div>
+          </div>
+          <Toggle checked={opHoursEnabled} onChange={setOpHoursEnabled} />
+        </div>
+
+        {opHoursEnabled && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <SettingRow label="Jam Mulai Operasional" hint="Format 24 jam (misal 08:00)">
+                <input
+                  type="time"
+                  className="form-input"
+                  value={opHoursStart}
+                  onChange={e => setOpHoursStart(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </SettingRow>
+              <SettingRow label="Jam Selesai Operasional" hint="Format 24 jam (misal 17:00)">
+                <input
+                  type="time"
+                  className="form-input"
+                  value={opHoursEnd}
+                  onChange={e => setOpHoursEnd(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </SettingRow>
+            </div>
+
+            <SettingRow label="Hari Operasional Aktif" hint="Pilih hari-hari kerja di mana sistem VoiceGuard aktif memonitor percakapan">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
+                {DAYS_LIST.map(({ idx, label }) => {
+                  const isChecked = opHoursDays.includes(idx)
+                  return (
+                    <label
+                      key={idx}
+                      onClick={() => toggleDay(idx)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        background: isChecked ? 'var(--accent-glow)' : 'var(--bg-elevated)',
+                        border: `1px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}`,
+                        color: isChecked ? 'var(--accent)' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        fontWeight: isChecked ? 600 : 400,
+                        userSelect: 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        style={{ display: 'none' }}
+                      />
+                      <span>{isChecked ? '✓' : '○'}</span>
+                      <span>{label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </SettingRow>
+          </div>
+        )}
 
         <div style={{ paddingTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
           <SaveBtn saving={saving} onClick={() => onSave({
@@ -416,6 +537,10 @@ function AudioTab({ config, devices, refreshDevices, onSave, saving, showAdvance
             sample_rate: sampleRate,
             channels: channels,
             chunk_size: chunkSize,
+            operating_hours_enabled: opHoursEnabled,
+            operating_hours_start: opHoursStart,
+            operating_hours_end: opHoursEnd,
+            operating_hours_days: opHoursDays,
           })} />
         </div>
       </div>
@@ -991,13 +1116,14 @@ function NotificationsTab({ config, onSave, saving }) {
           <>
             <SettingRow label="Snapshot Source Mode" hint="Select how camera images are captured">
               <select className="form-select" value={cameraSource} onChange={e => setCameraSource(e.target.value)}>
-                <option value="protectqube">ProtectQube AI Engine API (Recommended)</option>
-                <option value="rtsp">Direct RTSP Stream Capture (OpenCV)</option>
+                <option value="hybrid">Hybrid (Clean RTSP + ProtectQube AI Bounding Box) [Recommended]</option>
+                <option value="protectqube">ProtectQube AI Engine API (AI Bounding Box)</option>
+                <option value="rtsp">Direct RTSP Stream Capture (Clean Raw Frame)</option>
                 <option value="http">Direct HTTP Snapshot URL</option>
               </select>
             </SettingRow>
 
-            {cameraSource === 'protectqube' && (
+            {(cameraSource === 'protectqube' || cameraSource === 'hybrid') && (
               <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
                 <input className="form-input" value={cameraPqUrl} onChange={e => setCameraPqUrl(e.target.value)} placeholder="http://192.168.1.77:8082" />
               </SettingRow>

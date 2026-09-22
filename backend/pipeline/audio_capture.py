@@ -50,6 +50,10 @@ class AudioCapture:
         max_segment_duration: float = 15.0,
         vad_use_silero: bool = False,
         vad_auto_calibrate: bool = True,
+        operating_hours_enabled: bool = False,
+        operating_hours_start: str = "08:00",
+        operating_hours_end: str = "17:00",
+        operating_hours_days: Optional[List[int]] = None,
     ):
         self._segment_queue = segment_queue
         self._ring_push = ring_push_callback
@@ -69,6 +73,12 @@ class AudioCapture:
         self._max_segment_duration = max_segment_duration
         self._vad_use_silero = vad_use_silero
         self._vad_auto_calibrate = vad_auto_calibrate
+
+        # Operating Hours params
+        self._operating_hours_enabled = operating_hours_enabled
+        self._operating_hours_start = operating_hours_start
+        self._operating_hours_end = operating_hours_end
+        self._operating_hours_days = operating_hours_days if operating_hours_days is not None else [0, 1, 2, 3, 4, 5]
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -116,6 +126,10 @@ class AudioCapture:
         max_segment_duration: Optional[float] = None,
         use_silero: Optional[bool] = None,
         auto_calibrate: Optional[bool] = None,
+        operating_hours_enabled: Optional[bool] = None,
+        operating_hours_start: Optional[str] = None,
+        operating_hours_end: Optional[str] = None,
+        operating_hours_days: Optional[List[int]] = None,
     ) -> None:
         with self._lock:
             if threshold is not None:
@@ -130,6 +144,14 @@ class AudioCapture:
                 self._vad_use_silero = use_silero
             if auto_calibrate is not None:
                 self._vad_auto_calibrate = auto_calibrate
+            if operating_hours_enabled is not None:
+                self._operating_hours_enabled = operating_hours_enabled
+            if operating_hours_start is not None:
+                self._operating_hours_start = operating_hours_start
+            if operating_hours_end is not None:
+                self._operating_hours_end = operating_hours_end
+            if operating_hours_days is not None:
+                self._operating_hours_days = operating_hours_days
 
             # Recreate VAD if threshold or use_silero changes
             if threshold is not None or use_silero is not None:
@@ -170,6 +192,40 @@ class AudioCapture:
     # ──────────────────────────────────────────────────────
     # Internal
     # ──────────────────────────────────────────────────────
+
+    def _is_within_operating_hours(self) -> bool:
+        with self._lock:
+            enabled = self._operating_hours_enabled
+            start_str = self._operating_hours_start or "08:00"
+            end_str = self._operating_hours_end or "17:00"
+            days = self._operating_hours_days
+
+        if not enabled:
+            return True
+
+        from datetime import datetime
+        now = datetime.now()
+        current_weekday = now.weekday()  # Monday is 0, Sunday is 6
+
+        if days is not None:
+            if isinstance(days, str):
+                try:
+                    days = [int(x.strip()) for x in days.split(",") if x.strip()]
+                except Exception:
+                    days = [0, 1, 2, 3, 4, 5]
+            if current_weekday not in days:
+                return False
+
+        try:
+            cur_time_str = now.strftime("%H:%M")
+            if start_str <= end_str:
+                return start_str <= cur_time_str <= end_str
+            else:
+                # Overnight span (e.g. 21:00 to 06:00)
+                return cur_time_str >= start_str or cur_time_str <= end_str
+        except Exception as e:
+            logger.error(f"[Capture] Error evaluating operating hours: {e}")
+            return True
 
     def _get_rms(self, data: bytes) -> float:
         n = len(data) // 2
@@ -342,6 +398,26 @@ class AudioCapture:
                 segment_start_mono = 0.0
 
                 while self._running:
+                    # Check operating hours
+                    if not self._is_within_operating_hours():
+                        if is_recording:
+                            is_recording = False
+                            speech_frames = []
+                            silence_frames = 0
+                            consecutive_speech_frames = 0
+                        if last_vad_state != "off_hours":
+                            last_vad_state = "off_hours"
+                            if self._vad_state_cb:
+                                self._vad_state_cb("off_hours", 0.0)
+                        if self._rms_cb:
+                            self._rms_cb(0.0)
+                        time.sleep(0.25)
+                        continue
+                    elif last_vad_state == "off_hours":
+                        last_vad_state = "silence"
+                        if self._vad_state_cb:
+                            self._vad_state_cb("silence", 0.0)
+
                     with self._lock:
                         threshold = self._vad_threshold
                         silence_limit = int(self._silence_duration * fps)

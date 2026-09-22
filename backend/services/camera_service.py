@@ -157,10 +157,10 @@ class CameraSnapshotService:
         protectqube_url: str = "http://localhost:8000",
         timeout: int = 5,
         verdict: str = "ALERT",
-    ) -> Optional[str]:
+    ) -> Dict[str, Optional[str]]:
         """
-        Captures a snapshot based on source mode and counter configuration.
-        Returns relative path e.g. 'snapshots/snap_counter1_171234567.jpg' or None if failed.
+        Captures snapshot(s) based on source mode ('protectqube', 'rtsp', 'http', 'hybrid'/'both').
+        Returns dict: {'snapshot_path': rel_path, 'snapshot_bbox_path': rel_bbox_path}.
         """
         counter_id = counter_info.get("id", "default")
         camera_id = counter_info.get("camera_id") or counter_id
@@ -168,22 +168,86 @@ class CameraSnapshotService:
         snapshot_url = counter_info.get("snapshot_url")
 
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:19]
-        filename = f"snap_{counter_id}_{verdict}_{timestamp_str}.jpg"
-        save_path = self.snapshots_dir / filename
+        base_filename = f"snap_{counter_id}_{verdict}_{timestamp_str}"
 
-        img_bytes = None
+        clean_path_rel = None
+        bbox_path_rel = None
 
         try:
-            if source == "protectqube":
+            if source in ("hybrid", "both"):
+                # 1. Fetch clean frame from RTSP / HTTP
+                clean_bytes = None
+                if rtsp_url:
+                    clean_bytes = self._fetch_rtsp_snapshot(rtsp_url, timeout)
+                if not clean_bytes and snapshot_url:
+                    clean_bytes = self._fetch_http_snapshot(snapshot_url, timeout)
+
+                # 2. Fetch AI Bounding Box frame from ProtectQube AI
+                bbox_bytes = None
+                if camera_id:
+                    bbox_bytes = self._fetch_protectqube_snapshot(
+                        protectqube_url, camera_id, timeout
+                    )
+
+                # Save clean snapshot
+                if clean_bytes:
+                    clean_file = f"{base_filename}.jpg"
+                    with open(self.snapshots_dir / clean_file, "wb") as f:
+                        f.write(clean_bytes)
+                    clean_path_rel = f"snapshots/{clean_file}"
+
+                # Save bbox snapshot
+                if bbox_bytes:
+                    bbox_file = f"{base_filename}_bbox.jpg"
+                    with open(self.snapshots_dir / bbox_file, "wb") as f:
+                        f.write(bbox_bytes)
+                    bbox_path_rel = f"snapshots/{bbox_file}"
+
+                # If clean wasn't available, use bbox as primary clean
+                if not clean_path_rel and bbox_path_rel:
+                    clean_path_rel = bbox_path_rel
+
+                logger.info(f"[CameraService] Hybrid snapshot captured for {counter_id}: clean={clean_path_rel}, bbox={bbox_path_rel}")
+                return {
+                    "snapshot_path": clean_path_rel,
+                    "snapshot_bbox_path": bbox_path_rel,
+                }
+
+            elif source == "protectqube":
                 img_bytes = self._fetch_protectqube_snapshot(
                     protectqube_url, camera_id, timeout
                 )
+                if img_bytes:
+                    filename = f"{base_filename}.jpg"
+                    with open(self.snapshots_dir / filename, "wb") as f:
+                        f.write(img_bytes)
+                    rel_path = f"snapshots/{filename}"
+                    logger.info(f"[CameraService] Saved ProtectQube snapshot for {counter_id} ({verdict}) -> {rel_path}")
+                    return {"snapshot_path": rel_path, "snapshot_bbox_path": rel_path}
+
             elif source == "rtsp" and rtsp_url:
                 img_bytes = self._fetch_rtsp_snapshot(rtsp_url, timeout)
+                if img_bytes:
+                    filename = f"{base_filename}.jpg"
+                    with open(self.snapshots_dir / filename, "wb") as f:
+                        f.write(img_bytes)
+                    rel_path = f"snapshots/{filename}"
+                    logger.info(f"[CameraService] Saved RTSP snapshot for {counter_id} ({verdict}) -> {rel_path}")
+                    return {"snapshot_path": rel_path, "snapshot_bbox_path": None}
+
             elif source == "http" and snapshot_url:
                 img_bytes = self._fetch_http_snapshot(snapshot_url, timeout)
+                if img_bytes:
+                    filename = f"{base_filename}.jpg"
+                    with open(self.snapshots_dir / filename, "wb") as f:
+                        f.write(img_bytes)
+                    rel_path = f"snapshots/{filename}"
+                    logger.info(f"[CameraService] Saved HTTP snapshot for {counter_id} ({verdict}) -> {rel_path}")
+                    return {"snapshot_path": rel_path, "snapshot_bbox_path": None}
+
             else:
                 # Fallback attempts
+                img_bytes = None
                 if camera_id:
                     img_bytes = self._fetch_protectqube_snapshot(
                         protectqube_url, camera_id, timeout
@@ -193,18 +257,20 @@ class CameraSnapshotService:
                 if not img_bytes and rtsp_url:
                     img_bytes = self._fetch_rtsp_snapshot(rtsp_url, timeout)
 
-            if img_bytes:
-                with open(save_path, "wb") as f:
-                    f.write(img_bytes)
-                rel_path = f"snapshots/{filename}"
-                logger.info(f"[CameraService] Saved snapshot for {counter_id} ({verdict}) -> {rel_path}")
-                return rel_path
-            else:
-                logger.warning(f"[CameraService] Failed to capture snapshot for {counter_id} (source={source})")
-                return None
+                if img_bytes:
+                    filename = f"{base_filename}.jpg"
+                    with open(self.snapshots_dir / filename, "wb") as f:
+                        f.write(img_bytes)
+                    rel_path = f"snapshots/{filename}"
+                    logger.info(f"[CameraService] Saved fallback snapshot for {counter_id} ({verdict}) -> {rel_path}")
+                    return {"snapshot_path": rel_path, "snapshot_bbox_path": None}
+
+            logger.warning(f"[CameraService] Failed to capture snapshot for {counter_id} (source={source})")
+            return {"snapshot_path": None, "snapshot_bbox_path": None}
+
         except Exception as e:
             logger.error(f"[CameraService] Error capturing snapshot for {counter_id}: {e}")
-            return None
+            return {"snapshot_path": None, "snapshot_bbox_path": None}
 
     # ──────────────────────────────────────────────────────
     # Video Clip Capture

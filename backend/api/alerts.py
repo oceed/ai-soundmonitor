@@ -156,17 +156,15 @@ async def delete_alert(
 
     # Delete recording files
     import os
-    for p in [alert.recording_path, alert.snapshot_path, alert.video_path]:
+    for p in [alert.recording_path, alert.snapshot_path, getattr(alert, "snapshot_bbox_path", None), alert.video_path]:
         if p:
-            try:
-                if os.path.exists(p):
-                    os.unlink(p)
-            except OSError:
-                pass
+            file_path = storage / p
+            if file_path.exists():
+                file_path.unlink(missing_ok=True)
 
     await db.delete(alert)
     await db.commit()
-    return {"message": "Alert deleted"}
+    return {"deleted": True, "alert_id": alert_id}
 
 
 def _alert_to_dict(a: Alert) -> dict:
@@ -175,9 +173,8 @@ def _alert_to_dict(a: Alert) -> dict:
         "segment_id": a.segment_id,
         "session_id": a.session_id,
         "counter_id": getattr(a, "counter_id", "default"),
-        "timestamp": a.timestamp.replace(tzinfo=timezone.utc).isoformat() if a.timestamp else None,
+        "timestamp": a.timestamp.replace(tzinfo=timezone.utc).isoformat(),
         "verdict": a.verdict,
-        "classification": a.verdict,  # for compatibility
         "confidence": a.confidence,
         "risk_level": a.risk_level,
         "reason": a.reason,
@@ -195,6 +192,7 @@ def _alert_to_dict(a: Alert) -> dict:
         "mqtt_sent": a.mqtt_sent,
         "mqtt_sent_at": a.mqtt_sent_at.replace(tzinfo=timezone.utc).isoformat() if a.mqtt_sent_at else None,
         "snapshot_path": a.snapshot_path,
+        "snapshot_bbox_path": getattr(a, "snapshot_bbox_path", None),
         "video_path": getattr(a, "video_path", None),
         "video_upload_id": getattr(a, "video_upload_id", None),
         "video_upload_sent": getattr(a, "video_upload_sent", False),

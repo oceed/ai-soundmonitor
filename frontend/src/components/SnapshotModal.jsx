@@ -11,10 +11,14 @@ const VERDICT_CONFIG = {
 }
 
 export function SnapshotModal({ item, onClose }) {
-  const hasSnapshot = Boolean(item?.snapshot_path)
+  const hasCleanSnapshot = Boolean(item?.snapshot_path)
+  const hasBboxSnapshot = Boolean(item?.snapshot_bbox_path)
+  const hasSnapshot = hasCleanSnapshot || hasBboxSnapshot
+  const hasBothSnapshots = hasCleanSnapshot && hasBboxSnapshot && item.snapshot_path !== item.snapshot_bbox_path
   const hasVideo = Boolean(item?.video_path)
 
   const [activeTab, setActiveTab] = useState(hasVideo && !hasSnapshot ? 'video' : 'photo')
+  const [photoMode, setPhotoMode] = useState(hasBboxSnapshot ? 'bbox' : 'clean')
   const [isZoomed, setIsZoomed] = useState(false)
   const [imgLoading, setImgLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
@@ -30,7 +34,11 @@ export function SnapshotModal({ item, onClose }) {
 
   if (!item || (!hasSnapshot && !hasVideo)) return null
 
-  const imageUrl = hasSnapshot ? getSnapshotUrl(item.snapshot_path) : null
+  const activePhotoPath = (photoMode === 'bbox' && hasBboxSnapshot)
+    ? item.snapshot_bbox_path
+    : (item.snapshot_path || item.snapshot_bbox_path)
+
+  const imageUrl = activePhotoPath ? getSnapshotUrl(activePhotoPath) : null
   const videoUrl = hasVideo ? getVideoUrl(item.video_path) : null
   const cfg = VERDICT_CONFIG[item.verdict] || VERDICT_CONFIG.NORMAL
   const formattedTime = item.timestamp
@@ -38,6 +46,13 @@ export function SnapshotModal({ item, onClose }) {
     : '—'
 
   const customerPresent = item.customer_present !== undefined ? Boolean(item.customer_present) : null
+
+  const handleSwitchPhotoMode = (mode) => {
+    if (mode === photoMode) return
+    setImgLoading(true)
+    setImgError(false)
+    setPhotoMode(mode)
+  }
 
   return (
     <div
@@ -164,53 +179,110 @@ export function SnapshotModal({ item, onClose }) {
           </div>
         </div>
 
-        {/* Tab Switcher (Foto vs Video) */}
-        {hasSnapshot && hasVideo && (
-          <div style={{
-            display: 'flex',
-            background: 'var(--bg-surface)',
-            borderBottom: '1px solid var(--border)',
-            padding: '4px 16px',
-            gap: 6,
-          }}>
-            <button
-              onClick={() => setActiveTab('photo')}
-              style={{
-                padding: '6px 14px',
-                fontSize: 12,
-                fontWeight: activeTab === 'photo' ? 700 : 500,
-                color: activeTab === 'photo' ? 'var(--text-primary)' : 'var(--text-muted)',
-                background: activeTab === 'photo' ? 'var(--bg-elevated)' : 'transparent',
-                border: activeTab === 'photo' ? '1px solid var(--border)' : '1px solid transparent',
-                borderRadius: 6,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <span>📷 Foto Snapshot</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('video')}
-              style={{
-                padding: '6px 14px',
-                fontSize: 12,
-                fontWeight: activeTab === 'video' ? 700 : 500,
-                color: activeTab === 'video' ? 'var(--text-primary)' : 'var(--text-muted)',
-                background: activeTab === 'video' ? 'var(--bg-elevated)' : 'transparent',
-                border: activeTab === 'video' ? '1px solid var(--border)' : '1px solid transparent',
-                borderRadius: 6,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <span>🎥 Video Clip MP4</span>
-            </button>
+        {/* Tab Switcher (Foto vs Video & Clean vs Bounding Box) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--bg-surface)',
+          borderBottom: '1px solid var(--border)',
+          padding: '4px 16px',
+          gap: 6,
+          flexWrap: 'wrap',
+        }}>
+          {/* Main Media Tabs (Foto vs Video) */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {hasSnapshot && (
+              <button
+                onClick={() => setActiveTab('photo')}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  fontWeight: activeTab === 'photo' ? 700 : 500,
+                  color: activeTab === 'photo' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: activeTab === 'photo' ? 'var(--bg-elevated)' : 'transparent',
+                  border: activeTab === 'photo' ? '1px solid var(--border)' : '1px solid transparent',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>📷 Foto Snapshot</span>
+              </button>
+            )}
+            {hasVideo && (
+              <button
+                onClick={() => setActiveTab('video')}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  fontWeight: activeTab === 'video' ? 700 : 500,
+                  color: activeTab === 'video' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: activeTab === 'video' ? 'var(--bg-elevated)' : 'transparent',
+                  border: activeTab === 'video' ? '1px solid var(--border)' : '1px solid transparent',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>🎥 Video Clip MP4</span>
+              </button>
+            )}
           </div>
-        )}
+
+          {/* Dual Snapshot Switcher (Clean RTSP vs AI Bounding Box) */}
+          {activeTab === 'photo' && hasBothSnapshots && (
+            <div style={{
+              display: 'inline-flex',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              padding: 2,
+              gap: 2,
+            }}>
+              <button
+                onClick={() => handleSwitchPhotoMode('clean')}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 11,
+                  fontWeight: photoMode === 'clean' ? 700 : 500,
+                  color: photoMode === 'clean' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: photoMode === 'clean' ? 'var(--bg-surface)' : 'transparent',
+                  border: photoMode === 'clean' ? '1px solid var(--border)' : '1px solid transparent',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <span>📸 Foto Bersih</span>
+              </button>
+              <button
+                onClick={() => handleSwitchPhotoMode('bbox')}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 11,
+                  fontWeight: photoMode === 'bbox' ? 700 : 500,
+                  color: photoMode === 'bbox' ? 'var(--accent)' : 'var(--text-muted)',
+                  background: photoMode === 'bbox' ? 'var(--accent-glow)' : 'transparent',
+                  border: photoMode === 'bbox' ? '1px solid var(--accent)' : '1px solid transparent',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <span>🎯 AI Bounding Box</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Media Display Area */}
         <div style={{
@@ -292,7 +364,7 @@ export function SnapshotModal({ item, onClose }) {
           }}>
             {activeTab === 'video'
               ? (item.video_path?.split('/').pop() || 'video.mp4')
-              : (item.snapshot_path?.split('/').pop() || 'snapshot.jpg')}
+              : (activePhotoPath?.split('/').pop() || 'snapshot.jpg')}
           </div>
         </div>
 

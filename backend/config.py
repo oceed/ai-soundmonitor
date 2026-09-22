@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     vad_max_segment_duration: float = 15.0
     vad_use_silero: bool = False
 
+    # Operating Hours (Jam Operasional)
+    operating_hours_enabled: bool = False
+    operating_hours_start: str = "08:00"
+    operating_hours_end: str = "17:00"
+    operating_hours_days: str = "0,1,2,3,4,5"
+
     # Recording
     pre_buffer_seconds: float = 10.0
     post_buffer_seconds: float = 15.0
@@ -343,6 +349,11 @@ _DEFAULT_RUNTIME_CONFIG: Dict[str, Any] = {
     "audio_stream_device_token": "",
     # Dashboard display filter
     "filter_short_segments_dashboard": False,
+    # Operating Hours (Jam Operasional)
+    "operating_hours_enabled": False,
+    "operating_hours_start": "08:00",
+    "operating_hours_end": "17:00",
+    "operating_hours_days": [0, 1, 2, 3, 4, 5],
 }
 
 _DEFAULT_RUNTIME_CONFIG["system_prompt"] = compile_system_prompt(
