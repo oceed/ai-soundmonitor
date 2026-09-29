@@ -64,12 +64,18 @@ async def get_counters_spatial_status(
                 continue
 
             counter_copy = dict(c)
-            counter_copy["camera_id"] = cam_id
+            pq_user = runtime_config.get("camera_snapshot_protectqube_username", "admin")
+            pq_pass = runtime_config.get("camera_snapshot_protectqube_password", "admin123")
+            pq_token = runtime_config.get("camera_snapshot_protectqube_token", "")
+
             is_present = cam_svc.check_customer_presence(
                 counter_info=counter_copy,
                 protectqube_url=protectqube_url,
                 tolerance_seconds=tol_sec,
                 timeout=2,
+                username=pq_user,
+                password=pq_pass,
+                token=pq_token,
             )
             results[c_id] = {
                 "customer_present": is_present,

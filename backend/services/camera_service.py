@@ -78,6 +78,63 @@ class CameraSnapshotService:
         self.videos_dir.mkdir(parents=True, exist_ok=True)
         self._last_customer_seen: Dict[str, float] = {}
         self._working_base: Optional[str] = None
+        self._pq_tokens: Dict[str, tuple[str, float]] = {}  # base_url -> (token, expires_at)
+
+    # ──────────────────────────────────────────────────────
+    # ProtectQube AI Authentication Helper
+    # ──────────────────────────────────────────────────────
+
+    def _get_protectqube_token(
+        self,
+        base_url: str,
+        username: str = "admin",
+        password: str = "admin123",
+        static_token: str = "",
+        timeout: int = 5,
+    ) -> Optional[str]:
+        """
+        Retrieves a valid Bearer token for ProtectQube AI API calls.
+        Auto-authenticates via POST /api/auth/login with caching.
+        """
+        if static_token and static_token.strip():
+            return static_token.strip()
+
+        base_clean = base_url.rstrip("/")
+        cached = self._pq_tokens.get(base_clean)
+        now = time.time()
+        if cached:
+            token, expires_at = cached
+            if now < expires_at - 60:
+                return token
+
+        # Perform login via FastAPI OAuth2 / Form endpoint
+        login_url = f"{base_clean}/api/auth/login"
+        try:
+            form_data = urllib.parse.urlencode({
+                "username": username or "admin",
+                "password": password or "admin123",
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                login_url,
+                data=form_data,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": "VoiceGuard-Camera-Service",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    access_token = data.get("access_token")
+                    expires_in = int(data.get("expires_in", 86400))
+                    if access_token:
+                        self._pq_tokens[base_clean] = (access_token, now + expires_in)
+                        logger.info(f"[CameraService] Authenticated with ProtectQube AI ({base_clean}) -> token acquired")
+                        return access_token
+        except Exception as e:
+            logger.debug(f"[CameraService] ProtectQube AI login failed at {login_url}: {e}")
+        return None
 
     # ──────────────────────────────────────────────────────
     # Spatial Customer Presence Check
@@ -89,6 +146,9 @@ class CameraSnapshotService:
         protectqube_url: str = "http://localhost:8082",
         tolerance_seconds: float = 8.0,
         timeout: int = 3,
+        username: str = "admin",
+        password: str = "admin123",
+        token: str = "",
     ) -> bool:
         """
         Queries ProtectQube AI for customer presence in Customer Service Zone.
@@ -109,11 +169,13 @@ class CameraSnapshotService:
             if zone_id:
                 url += f"?zone_id={urllib.parse.quote(zone_id)}"
 
+            headers = {"User-Agent": "VoiceGuard-Spatial-Client"}
+            auth_token = self._get_protectqube_token(cand, username, password, token, timeout)
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+
             try:
-                req = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "VoiceGuard-Spatial-Client"}
-                )
+                req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     if resp.status == 200:
                         self._working_base = cand
@@ -154,9 +216,12 @@ class CameraSnapshotService:
         self,
         counter_info: Dict[str, Any],
         source: str = "protectqube",
-        protectqube_url: str = "http://localhost:8000",
+        protectqube_url: str = "http://localhost:8082",
         timeout: int = 5,
         verdict: str = "ALERT",
+        username: str = "admin",
+        password: str = "admin123",
+        token: str = "",
     ) -> Dict[str, Optional[str]]:
         """
         Captures snapshot(s) based on source mode ('protectqube', 'rtsp', 'http', 'hybrid'/'both').
@@ -186,7 +251,7 @@ class CameraSnapshotService:
                 bbox_bytes = None
                 if camera_id:
                     bbox_bytes = self._fetch_protectqube_snapshot(
-                        protectqube_url, camera_id, timeout
+                        protectqube_url, camera_id, timeout, username, password, token
                     )
 
                 # Save clean snapshot
@@ -215,7 +280,7 @@ class CameraSnapshotService:
 
             elif source == "protectqube":
                 img_bytes = self._fetch_protectqube_snapshot(
-                    protectqube_url, camera_id, timeout
+                    protectqube_url, camera_id, timeout, username, password, token
                 )
                 if img_bytes:
                     filename = f"{base_filename}.jpg"
@@ -250,7 +315,7 @@ class CameraSnapshotService:
                 img_bytes = None
                 if camera_id:
                     img_bytes = self._fetch_protectqube_snapshot(
-                        protectqube_url, camera_id, timeout
+                        protectqube_url, camera_id, timeout, username, password, token
                     )
                 if not img_bytes and snapshot_url:
                     img_bytes = self._fetch_http_snapshot(snapshot_url, timeout)
@@ -281,8 +346,11 @@ class CameraSnapshotService:
         counter_info: Dict[str, Any],
         duration_s: int = 10,
         source: str = "protectqube",
-        protectqube_url: str = "http://localhost:8000",
+        protectqube_url: str = "http://localhost:8082",
         verdict: str = "ALERT",
+        username: str = "admin",
+        password: str = "admin123",
+        token: str = "",
     ) -> Optional[str]:
         """
         Captures a video clip (MP4).
@@ -303,12 +371,14 @@ class CameraSnapshotService:
             try:
                 bases = _get_candidate_bases(protectqube_url, self._working_base)
                 for base_clean in bases:
+                    auth_token = self._get_protectqube_token(base_clean, username, password, token, duration_s + 5)
                     try:
                         url = f"{base_clean}/api/cameras/{camera_id}/clip?duration={duration_s}"
-                        req = urllib.request.Request(
-                            url,
-                            headers={"User-Agent": "VoiceGuard-Camera-Service"}
-                        )
+                        headers = {"User-Agent": "VoiceGuard-Camera-Service"}
+                        if auth_token:
+                            headers["Authorization"] = f"Bearer {auth_token}"
+
+                        req = urllib.request.Request(url, headers=headers)
                         with urllib.request.urlopen(req, timeout=duration_s + 5) as resp:
                             if resp.status == 200:
                                 data = resp.read()
@@ -401,28 +471,53 @@ class CameraSnapshotService:
     # ──────────────────────────────────────────────────────
 
     def _fetch_protectqube_snapshot(
-        self, base_url: str, camera_id: str, timeout: int
+        self,
+        base_url: str,
+        camera_id: str,
+        timeout: int,
+        username: str = "admin",
+        password: str = "admin123",
+        token: str = "",
     ) -> Optional[bytes]:
-        """Fetch snapshot image from ProtectQube AI backend API."""
+        """Fetch snapshot image from ProtectQube AI backend API with JWT/Bearer auth."""
         bases = _get_candidate_bases(base_url, self._working_base)
         for base_clean in bases:
+            auth_token = self._get_protectqube_token(base_clean, username, password, token, timeout)
             urls = [
                 f"{base_clean}/api/cameras/{camera_id}/snapshot",
                 f"{base_clean}/api/snapshots/latest?camera_id={camera_id}",
                 f"{base_clean}/api/camera/{camera_id}/frame",
             ]
             for url in urls:
+                headers = {"User-Agent": "VoiceGuard-Camera-Service"}
+                if auth_token:
+                    headers["Authorization"] = f"Bearer {auth_token}"
+
                 try:
-                    req = urllib.request.Request(
-                        url, headers={"User-Agent": "VoiceGuard-Camera-Service"}
-                    )
+                    req = urllib.request.Request(url, headers=headers)
                     with urllib.request.urlopen(req, timeout=timeout) as resp:
                         if resp.status == 200:
                             data = resp.read()
                             if len(data) > 1000:
+                                self._working_base = base_clean
                                 return data
-                except Exception:
-                    continue
+                except urllib.error.HTTPError as he:
+                    if he.code == 401:
+                        # Clear cached token and retry with a fresh login once
+                        self._pq_tokens.pop(base_clean, None)
+                        fresh_token = self._get_protectqube_token(base_clean, username, password, token, timeout)
+                        if fresh_token:
+                            try:
+                                headers["Authorization"] = f"Bearer {fresh_token}"
+                                req2 = urllib.request.Request(url, headers=headers)
+                                with urllib.request.urlopen(req2, timeout=timeout) as resp2:
+                                    if resp2.status == 200:
+                                        data2 = resp2.read()
+                                        if len(data2) > 1000:
+                                            self._working_base = base_clean
+                                            return data2
+                            except Exception:
+                                pass
         return None
 
     def _fetch_http_snapshot(self, snapshot_url: str, timeout: int) -> Optional[bytes]:

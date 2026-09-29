@@ -907,6 +907,9 @@ function NotificationsTab({ config, onSave, saving }) {
   const [cameraEnabled, setCameraEnabled] = useState(config.camera_snapshot_enabled ?? false)
   const [cameraSource, setCameraSource] = useState(config.camera_snapshot_source ?? 'protectqube')
   const [cameraPqUrl, setCameraPqUrl] = useState(config.camera_snapshot_protectqube_url ?? 'http://localhost:8082')
+  const [cameraPqUser, setCameraPqUser] = useState(config.camera_snapshot_protectqube_username ?? 'admin')
+  const [cameraPqPass, setCameraPqPass] = useState(config.camera_snapshot_protectqube_password ?? 'admin123')
+  const [cameraPqToken, setCameraPqToken] = useState(config.camera_snapshot_protectqube_token ?? '')
   const [cameraTimeout, setCameraTimeout] = useState(config.camera_snapshot_timeout ?? 5)
   const [cameraVerdicts, setCameraVerdicts] = useState(config.camera_snapshot_on_verdicts ?? ['FRAUD', 'SUSPICIOUS'])
   const [snapOnNormal, setSnapOnNormal] = useState(config.snapshot_on_normal_conversation ?? false)
@@ -974,6 +977,9 @@ function NotificationsTab({ config, onSave, saving }) {
       camera_snapshot_source: cameraSource,
       // spatialPqUrl and cameraPqUrl share the same config key; use spatialPqUrl as source of truth
       camera_snapshot_protectqube_url: spatialPqUrl || cameraPqUrl,
+      camera_snapshot_protectqube_username: cameraPqUser,
+      camera_snapshot_protectqube_password: cameraPqPass,
+      camera_snapshot_protectqube_token: cameraPqToken,
       camera_snapshot_timeout: cameraTimeout,
       camera_snapshot_on_verdicts: cameraVerdicts,
       snapshot_on_normal_conversation: snapOnNormal,
@@ -1124,9 +1130,22 @@ function NotificationsTab({ config, onSave, saving }) {
             </SettingRow>
 
             {(cameraSource === 'protectqube' || cameraSource === 'hybrid') && (
-              <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
-                <input className="form-input" value={cameraPqUrl} onChange={e => setCameraPqUrl(e.target.value)} placeholder="http://192.168.1.77:8082" />
-              </SettingRow>
+              <>
+                <SettingRow label="ProtectQube AI Base URL" hint="URL endpoint of ProtectQube AI backend server">
+                  <input className="form-input" value={cameraPqUrl} onChange={e => { setCameraPqUrl(e.target.value); setSpatialPqUrl(e.target.value); }} placeholder="http://localhost:8082" />
+                </SettingRow>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <SettingRow label="ProtectQube AI Username" hint="Username login akun ProtectQube AI (default: admin)">
+                    <input className="form-input" value={cameraPqUser} onChange={e => setCameraPqUser(e.target.value)} placeholder="admin" />
+                  </SettingRow>
+                  <SettingRow label="ProtectQube AI Password" hint="Password login akun ProtectQube AI (default: admin123)">
+                    <input type="password" className="form-input" value={cameraPqPass} onChange={e => setCameraPqPass(e.target.value)} placeholder="admin123" />
+                  </SettingRow>
+                </div>
+                <SettingRow label="ProtectQube AI Token (Opsional)" hint="Override manual JWT Bearer token jika tidak ingin menggunakan auto-login username/password">
+                  <input type="password" className="form-input" value={cameraPqToken} onChange={e => setCameraPqToken(e.target.value)} placeholder="Opsional (kosongkan untuk auto-login)" />
+                </SettingRow>
+              </>
             )}
 
             <SettingRow label="Snapshot Capture Timeout" hint="Maximum seconds to wait for camera snapshot response">

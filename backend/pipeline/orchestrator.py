@@ -659,12 +659,19 @@ class PipelineOrchestrator:
                     counter_info = c
                     break
 
+            pq_user = self._rc.get("camera_snapshot_protectqube_username", "admin")
+            pq_pass = self._rc.get("camera_snapshot_protectqube_password", "admin123")
+            pq_token = self._rc.get("camera_snapshot_protectqube_token", "")
+
             if spatial_filter_enabled and self._camera_service:
-                protectqube_url = self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000")
+                protectqube_url = self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8082")
                 customer_present = self._camera_service.check_customer_presence(
                     counter_info=counter_info,
                     protectqube_url=protectqube_url,
                     tolerance_seconds=tol_sec,
+                    username=pq_user,
+                    password=pq_pass,
+                    token=pq_token,
                 )
 
             # Camera Snapshot Trigger
@@ -684,9 +691,12 @@ class PipelineOrchestrator:
                     snap_res = self._camera_service.capture_snapshot(
                         counter_info=counter_info,
                         source=self._rc.get("camera_snapshot_source", "protectqube"),
-                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000"),
+                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8082"),
                         timeout=int(self._rc.get("camera_snapshot_timeout", 5)),
                         verdict=classification,
+                        username=pq_user,
+                        password=pq_pass,
+                        token=pq_token,
                     )
                     if isinstance(snap_res, dict):
                         snapshot_path = snap_res.get("snapshot_path")
@@ -714,8 +724,11 @@ class PipelineOrchestrator:
                         counter_info=counter_info,
                         duration_s=duration_s,
                         source=v_source,
-                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8000"),
+                        protectqube_url=self._rc.get("camera_snapshot_protectqube_url", "http://localhost:8082"),
                         verdict=classification,
+                        username=pq_user,
+                        password=pq_pass,
+                        token=pq_token,
                     )
                 except Exception as vid_err:
                     logger.error(f"[Orchestrator] Error capturing video clip: {vid_err}")
