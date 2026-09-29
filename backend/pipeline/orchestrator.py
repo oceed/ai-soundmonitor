@@ -790,17 +790,30 @@ class PipelineOrchestrator:
                 else:
                     try:
                         snapshot_unique_id = None
-                        if snapshot_path and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
-                            try:
-                                storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
-                                target_file = storage_base / snapshot_path.lstrip('/')
-                                if not target_file.exists():
-                                    target_file = Path(snapshot_path)
-                                if target_file.exists():
-                                    snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
-                                    logger.info(f"[Normal Event {segment_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
-                            except Exception as snap_err:
-                                logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
+                        snapshot_bbox_unique_id = None
+                        if self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+                            storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+                            if snapshot_path:
+                                try:
+                                    target_file = storage_base / snapshot_path.lstrip('/')
+                                    if not target_file.exists():
+                                        target_file = Path(snapshot_path)
+                                    if target_file.exists():
+                                        snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
+                                        logger.info(f"[Normal Event {segment_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
+                                except Exception as snap_err:
+                                    logger.error(f"[Normal Event {segment_id}] Snapshot upload error: {snap_err}")
+
+                            if snapshot_bbox_path and snapshot_bbox_path != snapshot_path:
+                                try:
+                                    target_bbox = storage_base / snapshot_bbox_path.lstrip('/')
+                                    if not target_bbox.exists():
+                                        target_bbox = Path(snapshot_bbox_path)
+                                    if target_bbox.exists():
+                                        snapshot_bbox_unique_id = self._snapshot_uploader.upload(str(target_bbox))
+                                        logger.info(f"[Normal Event {segment_id}] BBox snapshot uploaded, snapshot_bbox_id={snapshot_bbox_unique_id}")
+                                except Exception as bbox_err:
+                                    logger.error(f"[Normal Event {segment_id}] BBox snapshot upload error: {bbox_err}")
 
                         audio_unique_id = None
                         record_verdict = self._rc.get("record_on_verdict", "BOTH")
@@ -823,12 +836,14 @@ class PipelineOrchestrator:
                             "session_id": self._session_id,
                             "audio_id": audio_unique_id or "",
                             "snapshot_id": snapshot_unique_id or "",
+                            "snapshot_bbox_id": snapshot_bbox_unique_id or "",
                             "verdict": fraud_result.verdict,
                             "classification": classification,
                             "confidence": fraud_result.confidence,
                             "transcript": stt.text,
                             "reason": fraud_result.reason,
                             "snapshot_path": snapshot_path or "",
+                            "snapshot_bbox_path": snapshot_bbox_path or "",
                             "timestamp": timestamp.isoformat(),
                             "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
                             "device_name": self._rc.get("device_name", ""),
@@ -982,23 +997,37 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(f"[Alert {alert_id}] Audio upload failed: {e}")
 
-        # 3.5. Upload snapshot & get unique snapshot ID
+        # 3.5. Upload snapshot & bbox snapshot & get unique IDs
         snapshot_unique_id = None
+        snapshot_bbox_unique_id = None
         alert_data = self._db.get_alert(alert_id)
         snap_path_str = alert_data.get("snapshot_path", "") if alert_data else ""
+        snap_bbox_path_str = alert_data.get("snapshot_bbox_path", "") if alert_data else ""
         camera_media_mode = self._rc.get("camera_media_mode", "both")
 
-        if snap_path_str and (camera_media_mode in ("both", "photo_only")) and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
-            try:
-                storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
-                target_file = storage_base / snap_path_str.lstrip('/')
-                if not target_file.exists():
-                    target_file = Path(snap_path_str)
-                if target_file.exists():
-                    snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
-                    logger.info(f"[Alert {alert_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
-            except Exception as e:
-                logger.error(f"[Alert {alert_id}] Snapshot upload failed: {e}")
+        if (camera_media_mode in ("both", "photo_only")) and self._rc.get("snapshot_upload_enabled", False) and self._snapshot_uploader:
+            storage_base = Path(self._rc.get("storage_path", self._settings.storage_path))
+            if snap_path_str:
+                try:
+                    target_file = storage_base / snap_path_str.lstrip('/')
+                    if not target_file.exists():
+                        target_file = Path(snap_path_str)
+                    if target_file.exists():
+                        snapshot_unique_id = self._snapshot_uploader.upload(str(target_file))
+                        logger.info(f"[Alert {alert_id}] Snapshot uploaded, snapshot_id={snapshot_unique_id}")
+                except Exception as e:
+                    logger.error(f"[Alert {alert_id}] Snapshot upload failed: {e}")
+
+            if snap_bbox_path_str and snap_bbox_path_str != snap_path_str:
+                try:
+                    target_bbox = storage_base / snap_bbox_path_str.lstrip('/')
+                    if not target_bbox.exists():
+                        target_bbox = Path(snap_bbox_path_str)
+                    if target_bbox.exists():
+                        snapshot_bbox_unique_id = self._snapshot_uploader.upload(str(target_bbox))
+                        logger.info(f"[Alert {alert_id}] BBox snapshot uploaded, snapshot_bbox_id={snapshot_bbox_unique_id}")
+                except Exception as e:
+                    logger.error(f"[Alert {alert_id}] BBox snapshot upload failed: {e}")
 
         # 3.6. Upload video & get unique video ID
         video_unique_id = None
@@ -1032,6 +1061,7 @@ class PipelineOrchestrator:
                         "session_id": self._session_id,
                         "audio_id": audio_unique_id or "",
                         "snapshot_id": snapshot_unique_id or "",
+                        "snapshot_bbox_id": snapshot_bbox_unique_id or "",
                         "video_id": video_unique_id or "",
                         "video_path": vid_path_str or "",
                         "customer_present": customer_present,
@@ -1043,7 +1073,8 @@ class PipelineOrchestrator:
                         "flags": fraud_result.active_flags,
                         "evidence": fraud_result.evidence,
                         "transcript": alert_data.get("transcript", "") if alert_data else "",
-                        "snapshot_path": snap_path_str,
+                        "snapshot_path": snap_path_str or "",
+                        "snapshot_bbox_path": snap_bbox_path_str or "",
                         "timestamp": timestamp.isoformat(),
                         "device_id": self._rc.get("device_id", getattr(self._settings, "device_id", "edge-device-01")),
                         "device_name": self._rc.get("device_name", ""),
