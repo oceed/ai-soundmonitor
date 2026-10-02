@@ -1083,7 +1083,7 @@ class PipelineOrchestrator:
                     published = self._mqtt.publish(payload)
                     if published:
                         self._db.mark_mqtt_sent(alert_id)
-                        logger.info(f"[Alert {alert_id}] Published to MQTT (audio_id='{audio_unique_id or ''}', snap_id='{snapshot_unique_id or ''}', vid_id='{video_unique_id or ''}')")
+                        logger.info(f"[Alert {alert_id}] Published to MQTT (audio_id='{audio_unique_id or ''}', snap_id='{snapshot_unique_id or ''}', bbox_id='{snapshot_bbox_unique_id or ''}', vid_id='{video_unique_id or ''}')")
                     else:
                         logger.warning(f"[Alert {alert_id}] MQTT publish skipped (broker offline/not connected)")
                 except Exception as e:
