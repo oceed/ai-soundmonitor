@@ -200,9 +200,13 @@ async def lifespan(app: FastAPI):
         recordings_dir=Path(settings.storage_path) / "recordings",
         runtime_config=runtime_config,
     )
+    async def _scheduled_cleanup():
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, retention.run_cleanup)
+
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, retention.run_cleanup),
+        _scheduled_cleanup,
         trigger="interval",
         hours=1,
         id="retention_cleanup",
