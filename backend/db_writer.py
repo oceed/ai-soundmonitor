@@ -285,6 +285,7 @@ class DBWriter:
                 return {
                     "transcript": alert.transcript,
                     "snapshot_path": alert.snapshot_path or "",
+                    "snapshot_bbox_path": getattr(alert, "snapshot_bbox_path", "") or "",
                     "video_path": getattr(alert, "video_path", "") or "",
                     "customer_present": getattr(alert, "customer_present", True),
                 }
